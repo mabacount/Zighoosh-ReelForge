@@ -75,8 +75,15 @@ class FlowAutomator:
         گام اول: اجرای مرورگر کروم بومی روی پورت 9222 برای لاگین بدون پرچم رباتیک.
         دستور معادل: flow launch
         """
-        self.log("🌐 در حال باز کردن مرورگر Google Chrome (پورت CDP 9222)...")
-        res = self._run_cli(["launch"], timeout=30)
+        port = str(self.config.get("cdp_port", 9222))
+        profile_dir = self.config.get("chrome_profile_dir")
+        args = ["launch", "--port", port]
+        if profile_dir:
+            expanded = str(Path(os.path.expanduser(profile_dir)).resolve())
+            args.extend(["--profile-dir", expanded])
+
+        self.log(f"🌐 در حال باز کردن مرورگر Google Chrome (پورت CDP {port})...")
+        res = self._run_cli(args, timeout=30)
         if res["ok"]:
             self.log("✅ مرورگر کروم باز شد. اگر لاگین نیستید، در پنجره بازشده وارد اکانت گوگل شوید.")
         return res["ok"]

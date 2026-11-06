@@ -6,6 +6,7 @@ Minimalist Apple/Google Modal for managing workspace paths, Whisper model, and G
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from tkinter import filedialog
 from typing import Any, Callable, Dict, Optional
@@ -222,6 +223,68 @@ class SettingsDialog(ctk.CTkToplevel):
         self.flow_timeout_entry.insert(0, str(flow_cfg.get("generation_timeout_sec", 300)))
         self.flow_timeout_entry.pack(fill="x", pady=(4, 0))
 
+        # Chrome Profile Directory Selection
+        prof_frame = ctk.CTkFrame(flow_card, fg_color="transparent")
+        prof_frame.pack(fill="x", padx=14, pady=(0, 12))
+
+        prof_lbl_row = ctk.CTkFrame(prof_frame, fg_color="transparent")
+        prof_lbl_row.pack(fill="x")
+
+        ctk.CTkLabel(
+            prof_lbl_row,
+            text="مسیر پروفایل کروم (ذخیره همیشگی لاگین اکانت گوگل):",
+            font=FONT_CAPTION,
+            text_color=TEXT_SECONDARY,
+        ).pack(side="left")
+
+        # Quick preset buttons
+        default_flow_dir = "~/.config/google-chrome-flow"
+        chrome_default_user_data = str(Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Chrome" / "User Data")
+
+        preset_row = ctk.CTkFrame(prof_frame, fg_color="transparent")
+        preset_row.pack(fill="x", pady=(2, 4))
+
+        use_flow_prof_btn = SecondaryButton(
+            preset_row,
+            text="پروفایل اختصاصی Flow",
+            width=140,
+            height=26,
+            command=lambda: self.set_profile_path(default_flow_dir),
+        )
+        use_flow_prof_btn.pack(side="left", padx=(0, 6))
+
+        use_system_chrome_btn = SecondaryButton(
+            preset_row,
+            text="پروفایل کروم اصلی ویندوز (اکانت فعلی شما)",
+            width=230,
+            height=26,
+            command=lambda: self.set_profile_path(chrome_default_user_data),
+        )
+        use_system_chrome_btn.pack(side="left")
+
+        prof_input_row = ctk.CTkFrame(prof_frame, fg_color="transparent")
+        prof_input_row.pack(fill="x")
+
+        self.flow_profile_entry = ctk.CTkEntry(
+            prof_input_row,
+            fg_color=SURFACE_INNER,
+            border_color=BORDER_COLOR,
+            text_color=TEXT_PRIMARY,
+            corner_radius=CORNER_RADIUS_INPUT,
+            height=34,
+        )
+        self.flow_profile_entry.insert(0, str(flow_cfg.get("chrome_profile_dir", default_flow_dir)))
+        self.flow_profile_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        prof_browse_btn = SecondaryButton(
+            prof_input_row,
+            text="انتخاب...",
+            width=80,
+            height=34,
+            command=self.browse_flow_profile_folder,
+        )
+        prof_browse_btn.pack(side="right")
+
         # Whisper & Other Options Row
         opts_frame = ctk.CTkFrame(scroll_card, fg_color="transparent")
         opts_frame.pack(fill="x", padx=12, pady=(8, 12))
@@ -272,6 +335,17 @@ class SettingsDialog(ctk.CTkToplevel):
         save_btn = PrimaryButton(footer, text="ذخیره تنظیمات", width=140, command=self.save_settings)
         save_btn.pack(side="right")
 
+    def set_profile_path(self, path_str: str):
+        self.flow_profile_entry.delete(0, "end")
+        self.flow_profile_entry.insert(0, path_str)
+
+    def browse_flow_profile_folder(self):
+        current_val = self.flow_profile_entry.get().strip()
+        initial_dir = current_val if Path(os.path.expanduser(current_val)).exists() else str(Path.home())
+        selected = filedialog.askdirectory(initialdir=initial_dir, title="انتخاب پوشه پروفایل کروم")
+        if selected:
+            self.set_profile_path(selected)
+
     def browse_folder(self, key: str):
         current_val = self.entries[key].get()
         initial_dir = current_val if Path(current_val).exists() else str(Path.home())
@@ -290,6 +364,7 @@ class SettingsDialog(ctk.CTkToplevel):
         flow_cfg = self.config.get("flow_config", {})
         flow_cfg["default_video_model"] = self.flow_video_combo.get()
         flow_cfg["default_image_model"] = self.flow_image_combo.get()
+        flow_cfg["chrome_profile_dir"] = self.flow_profile_entry.get().strip()
         try:
             flow_cfg["generation_timeout_sec"] = int(self.flow_timeout_entry.get().strip())
         except ValueError:
