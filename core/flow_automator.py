@@ -50,25 +50,61 @@ class FlowAutomator:
                 shell=(shutil.which("flow") is None or os.name == "nt"),  # برای سازگاری کامل با Windows CMD/PowerShell
             )
             stdout_clean = result.stdout.strip()
+            res_ok = result.returncode == 0
+            parsed_data = {}
             if stdout_clean:
                 try:
-                    return {"ok": result.returncode == 0, "data": json.loads(stdout_clean), "raw": stdout_clean}
+                    parsed_data = json.loads(stdout_clean)
                 except json.JSONDecodeError:
                     s = stdout_clean.find("{")
                     e = stdout_clean.rfind("}")
                     if s != -1 and e != -1 and e > s:
                         try:
-                            return {"ok": result.returncode == 0, "data": json.loads(stdout_clean[s:e+1]), "raw": stdout_clean}
+                            parsed_data = json.loads(stdout_clean[s:e+1])
                         except json.JSONDecodeError:
                             pass
-                    return {"ok": result.returncode == 0, "data": {}, "raw": stdout_clean}
-            return {"ok": result.returncode == 0, "data": {}, "raw": result.stderr.strip()}
+
+            if isinstance(parsed_data, dict) and "error" in parsed_data:
+                res_ok = False
+                self.log(f"⚠️ پیام از Google Flow: {parsed_data['error']}", "WARNING")
+            elif not res_ok:
+                err_msg = result.stderr.strip() or stdout_clean
+                if err_msg:
+                    self.log(f"⚠️ پیام ترمینال: {err_msg[:250]}", "WARNING")
+
+            return {"ok": res_ok, "data": parsed_data, "raw": stdout_clean or result.stderr.strip()}
         except subprocess.TimeoutExpired:
             self.log("❌ خطای Timeout در اجرای دستور ترمینال Google Flow.")
             return {"ok": False, "error": "TIMEOUT", "data": {}}
         except Exception as e:
             self.log(f"❌ خطا در اجرای CLI: {e}")
             return {"ok": False, "error": str(e), "data": {}}
+
+    def ensure_active_project(self, project_name: str = "Zighoosh ReelForge") -> bool:
+        """
+        اطمینان از اینکه مرورگر روی بوم یک پروژه قرار دارد (نه در صفحه داشبورد).
+        اگر پروژه‌ای باز نباشد، به آخرین پروژه سوئیچ کرده یا یک پروژه جدید می‌سازد.
+        """
+        status_res = self._run_cli(["status", "--json"], timeout=15)
+        if status_res.get("ok"):
+            data = status_res.get("data", {})
+            if data.get("projectId") and not data.get("isDashboard", False):
+                return True
+
+        self.log("📂 در حال بررسی پروژه‌های باز در Google Flow...")
+        plist_res = self._run_cli(["project", "list", "--json"], timeout=20)
+        projects = plist_res.get("data", [])
+        if isinstance(projects, list) and len(projects) > 0 and projects[0].get("id"):
+            proj_id = projects[0]["id"]
+            proj_title = projects[0].get("title", proj_id)
+            self.log(f"🔄 بازگشایی پروژه در Google Flow: {proj_title}...")
+            sw_res = self._run_cli(["project", "switch", proj_id], timeout=30)
+            if sw_res.get("ok"):
+                return True
+
+        self.log(f"✨ در حال ایجاد پروژه جدید در Google Flow: {project_name}...")
+        cr_res = self._run_cli(["project", "create", project_name], timeout=35)
+        return cr_res.get("ok", False)
 
     def launch_chrome(self) -> bool:
         """
@@ -119,6 +155,7 @@ class FlowAutomator:
         """
         تولید تصویر پس‌زمینه تامنیل (9:16) و ذخیره مستقیم در پوشه Audio_BGM/AI_Background.png.
         """
+        self.ensure_active_project(project_root.name)
         output_file = project_root / "03_Raw_DropZone" / "Audio_BGM" / "AI_Background.png"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -153,6 +190,7 @@ class FlowAutomator:
         """
         تولید ویدیوی یک پلان مشخص (۱ تا ۶) و دانلود مستقیم آن در پوشه مربوطه در 03_Raw_DropZone.
         """
+        self.ensure_active_project(project_root.name)
         folder_name = self.PLAN_FOLDER_MAP.get(plan_number, f"Plan_0{plan_number}")
         output_file = project_root / "03_Raw_DropZone" / folder_name / f"V_Plan_0{plan_number}.mp4"
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -193,6 +231,7 @@ class FlowAutomator:
             args.insert(1, "--dry-run")
             self.log("🧪 در حال اجرای آزمایشی پایپلاین (Dry Run - بدون مصرف کردیت)...")
         else:
+            self.ensure_active_project(project_root.name)
             self.log("🚀 شروع اجرای خودکار کل صحنه‌ها در Google Flow...")
 
         res = self._run_cli(args, cwd=ai_brain_dir, timeout=(self.timeout * 6) + 120)
