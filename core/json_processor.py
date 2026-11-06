@@ -57,6 +57,88 @@ def validate_gemini_json(data: Any) -> Tuple[bool, str]:
     return True, "ساختار JSON معتبر و منطبق بر استاندارد است."
 
 
+def generate_flow_pipeline_manifest(
+    gemini_data: Dict[str, Any],
+    project_dir: Path,
+    flow_config: Optional[Dict[str, Any]] = None,
+) -> Path:
+    """
+    Generates the standard 02_AI_Brain_JSON/flow.json declarative pipeline manifest
+    for automated multi-scene rendering via google-flow-cli.
+    """
+    plan_folder_map = {
+        1: "Plan_01_Hook_Avatar",
+        2: "Plan_02_Problem",
+        3: "Plan_03_Company_Intro",
+        4: "Plan_04_Requirements",
+        5: "Plan_05_Benefits",
+        6: "Plan_06_CTA_Avatar",
+    }
+
+    if flow_config is None:
+        try:
+            cfg_file = Path("config.json")
+            if cfg_file.exists():
+                with open(cfg_file, "r", encoding="utf-8") as f:
+                    flow_config = json.load(f).get("flow_config", {})
+        except Exception:
+            flow_config = {}
+    flow_config = flow_config or {}
+
+    video_model = flow_config.get("default_video_model", "Veo 3.1 - Fast")
+    avatar_model = flow_config.get("default_avatar_model", "Omni 1.1 Flash")
+    resolution = flow_config.get("default_resolution", "720p")
+    duration = flow_config.get("default_duration", "8s")
+    aspect = flow_config.get("default_aspect", "9:16")
+    timeout = int(flow_config.get("generation_timeout_sec", 300))
+
+    scenes: List[Dict[str, Any]] = []
+    for plan in gemini_data.get("plans", []):
+        p_num = plan.get("plan_number", len(scenes) + 1)
+        folder_name = plan_folder_map.get(p_num, f"Plan_{p_num:02d}")
+        p_type = str(plan.get("plan_type", "")).upper()
+        visual = plan.get("visual_prompt_flow", "").strip()
+        phonetic = plan.get("tts_phonetic_text", "").strip()
+
+        if "AVATAR" in p_type:
+            scene_model = avatar_model
+            prompt_str = f'{visual} Speaking in Persian: "{phonetic}"'
+        else:
+            scene_model = video_model
+            prompt_str = visual
+
+        scenes.append({
+            "name": folder_name,
+            "model": scene_model,
+            "prompt": prompt_str,
+            "output": f"../03_Raw_DropZone/{folder_name}/V_Plan_{p_num:02d}.mp4",
+        })
+
+    manifest = {
+        "$schema": "https://flow.google/schema/v1.json",
+        "version": "1.0.0",
+        "name": str(gemini_data.get("job_id", "Flow_Project")),
+        "defaults": {
+            "mediaType": "video",
+            "model": video_model,
+            "resolution": resolution,
+            "duration": duration,
+            "aspect": aspect,
+            "batches": "x1",
+            "timeout": timeout,
+        },
+        "scenes": scenes,
+    }
+
+    brain_dir = project_dir / "02_AI_Brain_JSON"
+    brain_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = brain_dir / "flow.json"
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    return manifest_path
+
+
 def process_gemini_json(
     json_input: str | dict,
     project_dir: Path,
@@ -144,7 +226,10 @@ def process_gemini_json(
     with open(thumb_path, "w", encoding="utf-8") as f:
         f.write(thumb_content)
 
-    # 5. Ensure DropZone folders exist
+    # 5. Generate declarative Google Flow manifest (02_AI_Brain_JSON/flow.json)
+    generate_flow_pipeline_manifest(parsed, project_dir)
+
+    # 6. Ensure DropZone folders exist
     dropzone_dir = project_dir / "03_Raw_DropZone"
     dropzone_dir.mkdir(parents=True, exist_ok=True)
     plan_names = [

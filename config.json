@@ -5,5 +5,16 @@
   "templates_path": "App_Templates",
   "whisper_model": "base",
   "theme_mode": "dark",
-  "auto_open_premiere": true
+  "auto_open_premiere": true,
+  "flow_config": {
+    "cdp_port": 9222,
+    "chrome_profile_dir": "~/.config/google-chrome-flow",
+    "default_video_model": "Veo 3.1 - Fast",
+    "default_avatar_model": "Omni 1.1 Flash",
+    "default_image_model": "Nano Banana Pro",
+    "default_aspect": "9:16",
+    "default_duration": "8s",
+    "default_resolution": "720p",
+    "generation_timeout_sec": 300
+  }
 }

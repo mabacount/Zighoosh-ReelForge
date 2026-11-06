@@ -193,6 +193,7 @@ def run_test():
     assert (proj_dir / "02_AI_Brain_JSON" / "flow_ready_script.txt").exists()
     assert (proj_dir / "02_AI_Brain_JSON" / "music_prompt.txt").exists()
     assert (proj_dir / "02_AI_Brain_JSON" / "thumbnail_bg_prompt.txt").exists()
+    assert (proj_dir / "02_AI_Brain_JSON" / "flow.json").exists()
     print("Step 3 SUCCESS! ✅")
 
     # Populate dummy media into DropZone
@@ -260,9 +261,143 @@ def run_test():
     assert (archive_dir / "archive_registry.json").exists()
     print("Step 5 SUCCESS! ✅")
 
+    # STEP 6: Google Flow Automation & Manifest Unit Test
+    test_flow_automator_and_manifest()
+
     print("\n====================================================")
-    print("🎉 ALL 5 WORKFLOW STEPS PASSED WITH 100% SUCCESS!")
+    print("🎉 ALL 6 WORKFLOW STEPS PASSED WITH 100% SUCCESS!")
     print("====================================================")
+
+
+SAMPLE_GEMINI_JSON_6_PLANS = {
+    "job_id": "OJ-14051",
+    "job_title": "کارشناس ارشد بهره‌برداری نفت و گاز",
+    "company_name": "شرکت مهندسی نفت و گاز پتروسینا آریا",
+    "music_generation_prompt": "Cinematic industrial ambient track, subtle deep bass pulse, 95 BPM",
+    "thumbnail_data": {
+        "bg_image_prompt": "Cinematic wide shot of an oil refinery in southern Iran at golden hour, 9:16 vertical",
+        "hook_headline_text": "استخدام مهندس ارشد نفت و گاز!"
+    },
+    "plans": [
+        {
+            "plan_number": 1,
+            "plan_type": "AVATAR_HOOK",
+            "visual_prompt_flow": "Charismatic Iranian senior oil engineer in modern office, vertical 9:16",
+            "tts_phonetic_text": "اَگه کارشِناسِ اَرشَدِ بَهره‌بَرداری هَستی، این آگهی رو اَز دَست نَده!",
+            "clean_subtitle_chunks": ["اگه کارشناس ارشد", "بهره‌برداری هستی", "از دست نده"]
+        },
+        {
+            "plan_number": 2,
+            "plan_type": "BROLL_NARRATION",
+            "visual_prompt_flow": "Industrial control panel and gauges in gas plant, cinematic lighting",
+            "tts_phonetic_text": "این شرکت معتبر نفتی برای تکمیل کادر فنی خود نیاز به متخصص دارد.",
+            "clean_subtitle_chunks": ["این شرکت معتبر نفتی", "به متخصص نیاز دارد"]
+        },
+        {
+            "plan_number": 3,
+            "plan_type": "COMPANY_INTRO",
+            "visual_prompt_flow": "Modern engineering office building exterior with company logo",
+            "tts_phonetic_text": "شرکت پتروسینا آریا با پروژه‌های عظیم فراساحلی و خشکی.",
+            "clean_subtitle_chunks": ["شرکت پتروسینا آریا", "پروژه‌های عظیم"]
+        },
+        {
+            "plan_number": 4,
+            "plan_type": "REQUIREMENTS",
+            "visual_prompt_flow": "Engineer analyzing flow simulation software on monitors",
+            "tts_phonetic_text": "حداقل پنج سال سابقه و تسلط کامل بر نرم‌افزارهای پایپ‌سیم و هایسیس.",
+            "clean_subtitle_chunks": ["حداقل پنج سال سابقه", "تسلط بر هایسیس"]
+        },
+        {
+            "plan_number": 5,
+            "plan_type": "BENEFITS",
+            "visual_prompt_flow": "Comfortable accommodation quarters and industrial helicopter landing",
+            "tts_phonetic_text": "شرایط کاری اقماری، بیمه تکمیلی، اسکان و حقوق رقابتی.",
+            "clean_subtitle_chunks": ["شرایط اقماری", "حقوق رقابتی"]
+        },
+        {
+            "plan_number": 6,
+            "plan_type": "CTA_AVATAR",
+            "visual_prompt_flow": "Iranian engineer holding tablet gesturing to apply now, vertical 9:16",
+            "tts_phonetic_text": "همین حالا وارد سایت ایران اویل جاب شو و رزومه‌ت رو بفرست!",
+            "clean_subtitle_chunks": ["همین حالا وارد سایت شو", "رزومه‌ت رو بفرست"]
+        }
+    ]
+}
+
+
+def test_flow_automator_and_manifest():
+    print("\n--- [STEP 6: Google Flow Automation & Manifest Unit Test] ---")
+
+    # 1. Test importing FlowAutomator
+    print("1. Testing FlowAutomator import & initialization...")
+    from core.flow_automator import FlowAutomator
+
+    dummy_config = {
+        "flow_config": {
+            "cdp_port": 9222,
+            "chrome_profile_dir": "~/.config/google-chrome-flow",
+            "default_video_model": "Veo 3.1 - Fast",
+            "default_avatar_model": "Omni 1.1 Flash",
+            "default_image_model": "Nano Banana Pro",
+            "default_aspect": "9:16",
+            "default_duration": "8s",
+            "default_resolution": "720p",
+            "generation_timeout_sec": 300,
+        }
+    }
+    automator = FlowAutomator(dummy_config)
+    assert automator is not None, "FlowAutomator should instantiate without errors!"
+    print("FlowAutomator loaded successfully! ✅")
+
+    # 2. Test processing 6-plan JSON & manifest generation
+    print("2. Testing json_processor & flow.json manifest generation for 6 plans...")
+    test_flow_dir = Path("./test_sandbox/Flow_Test_Project").resolve()
+    shutil.rmtree(test_flow_dir, ignore_errors=True)
+    test_flow_dir.mkdir(parents=True, exist_ok=True)
+
+    ok, msg, parsed = process_gemini_json(SAMPLE_GEMINI_JSON_6_PLANS, test_flow_dir)
+    assert ok is True, f"process_gemini_json failed: {msg}"
+
+    flow_json_path = test_flow_dir / "02_AI_Brain_JSON" / "flow.json"
+    assert flow_json_path.exists(), "02_AI_Brain_JSON/flow.json must be created!"
+    print(f"flow.json created at: {flow_json_path}")
+
+    # 3. Validate flow.json structure
+    with open(flow_json_path, "r", encoding="utf-8") as f:
+        flow_data = json.load(f)
+
+    print("3. Validating flow.json schema, defaults, and scenes...")
+    assert "$schema" in flow_data, "Missing '$schema' key in flow.json!"
+    assert "defaults" in flow_data, "Missing 'defaults' key in flow.json!"
+    assert "scenes" in flow_data, "Missing 'scenes' key in flow.json!"
+    assert flow_data["name"] == "OJ-14051", f"Unexpected manifest name: {flow_data.get('name')}"
+
+    scenes = flow_data["scenes"]
+    assert len(scenes) == 6, f"Expected 6 scenes, found {len(scenes)}!"
+
+    expected_folders = [
+        "Plan_01_Hook_Avatar",
+        "Plan_02_Problem",
+        "Plan_03_Company_Intro",
+        "Plan_04_Requirements",
+        "Plan_05_Benefits",
+        "Plan_06_CTA_Avatar",
+    ]
+
+    for idx, (scene, expected_folder) in enumerate(zip(scenes, expected_folders), start=1):
+        assert scene["name"] == expected_folder, f"Scene {idx} name mismatch: {scene['name']} != {expected_folder}"
+        expected_output = f"../03_Raw_DropZone/{expected_folder}/V_Plan_{idx:02d}.mp4"
+        assert scene["output"] == expected_output, f"Scene {idx} output mismatch: {scene['output']} != {expected_output}"
+
+        # Verify avatar vs broll model & prompt
+        if idx in (1, 6):
+            assert scene["model"] == "Omni 1.1 Flash", f"Avatar scene {idx} should use Omni 1.1 Flash, got {scene['model']}"
+            assert 'Speaking in Persian:' in scene["prompt"], f"Avatar scene {idx} prompt should include Persian speech directive"
+        else:
+            assert scene["model"] == "Veo 3.1 - Fast", f"Scene {idx} should use Veo 3.1 - Fast, got {scene['model']}"
+
+    print("All 6 scenes in flow.json verified with correct DropZone output paths and models! ✅")
+    print("Step 6 SUCCESS! ✅")
 
 
 if __name__ == "__main__":

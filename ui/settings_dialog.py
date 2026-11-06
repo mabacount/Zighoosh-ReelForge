@@ -1,6 +1,6 @@
 """
 Zighoosh ReelForge - Settings Dialog
-Minimalist Apple/Google Modal for managing workspace paths and engine settings.
+Minimalist Apple/Google Modal for managing workspace paths, Whisper model, and Google Flow settings.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from ui.theme import (
 
 class SettingsDialog(ctk.CTkToplevel):
     """
-    Modal window for configuring workspace paths and Whisper model.
+    Modal window for configuring workspace paths, Whisper model, and Google Flow settings.
     """
 
     def __init__(
@@ -46,9 +46,9 @@ class SettingsDialog(ctk.CTkToplevel):
         self.config = config.copy()
         self.on_save_cb = on_save_cb
 
-        self.title("تنظیمات مسیرها و هوش مصنوعی | Zighoosh ReelForge")
-        self.geometry("640x580")
-        self.resizable(False, False)
+        self.title("تنظیمات سیستم و هوش مصنوعی | Zighoosh ReelForge")
+        self.geometry("680x730")
+        self.minsize(620, 640)
         self.configure(fg_color=SURFACE_CARD)
 
         # Center on parent window
@@ -60,7 +60,7 @@ class SettingsDialog(ctk.CTkToplevel):
     def build_ui(self):
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 10))
+        header.pack(fill="x", padx=24, pady=(16, 8))
 
         title = ctk.CTkLabel(
             header,
@@ -72,15 +72,19 @@ class SettingsDialog(ctk.CTkToplevel):
 
         subtitle = ctk.CTkLabel(
             header,
-            text="مسیرهای پیش‌فرض پروژه‌ها، قالب‌های مادر و تنظیمات مدل Forced Alignment را مشخص کنید.",
+            text="مسیرهای پیش‌فرض پروژه‌ها، قالب‌های مادر، تنظیمات زیرنویس و Google Flow را مشخص کنید.",
             font=FONT_BODY,
             text_color=TEXT_MUTED,
         )
         subtitle.pack(anchor="w", pady=(2, 0))
 
-        # Main Card Container
-        card = CardFrame(self, fg_color=SURFACE_INNER)
-        card.pack(fill="both", expand=True, padx=24, pady=10)
+        # Main Scrollable Container
+        scroll_card = ctk.CTkScrollableFrame(
+            self,
+            fg_color=SURFACE_INNER,
+            corner_radius=CORNER_RADIUS_CARD,
+        )
+        scroll_card.pack(fill="both", expand=True, padx=24, pady=8)
 
         # Form fields
         self.entries: Dict[str, ctk.CTkEntry] = {}
@@ -109,8 +113,8 @@ class SettingsDialog(ctk.CTkToplevel):
         ]
 
         for key, label_text, hint in fields:
-            f_frame = ctk.CTkFrame(card, fg_color="transparent")
-            f_frame.pack(fill="x", padx=16, pady=8)
+            f_frame = ctk.CTkFrame(scroll_card, fg_color="transparent")
+            f_frame.pack(fill="x", padx=12, pady=6)
 
             lbl_row = ctk.CTkFrame(f_frame, fg_color="transparent")
             lbl_row.pack(fill="x")
@@ -145,9 +149,82 @@ class SettingsDialog(ctk.CTkToplevel):
             hint_lbl = ctk.CTkLabel(f_frame, text=hint, font=FONT_CAPTION, text_color=TEXT_MUTED)
             hint_lbl.pack(anchor="w", pady=(2, 0))
 
-        # Model & Options Row
-        opts_frame = ctk.CTkFrame(card, fg_color="transparent")
-        opts_frame.pack(fill="x", padx=16, pady=(12, 16))
+        # Google Flow Settings Section
+        flow_cfg = self.config.get("flow_config", {})
+
+        flow_card = CardFrame(scroll_card, fg_color=SURFACE_CARD)
+        flow_card.pack(fill="x", padx=12, pady=(10, 8))
+
+        flow_header = ctk.CTkFrame(flow_card, fg_color="transparent")
+        flow_header.pack(fill="x", padx=14, pady=(10, 6))
+
+        ctk.CTkLabel(
+            flow_header,
+            text="تنظیمات پیش‌فرض Google Flow (Terminal CDP):",
+            font=FONT_BOLD,
+            text_color=TEXT_PRIMARY,
+        ).pack(side="left")
+
+        flow_grid = ctk.CTkFrame(flow_card, fg_color="transparent")
+        flow_grid.pack(fill="x", padx=14, pady=(0, 12))
+
+        # Default Video Model
+        v_col = ctk.CTkFrame(flow_grid, fg_color="transparent")
+        v_col.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        ctk.CTkLabel(v_col, text="مدل پیش‌فرض ویدیو:", font=FONT_CAPTION, text_color=TEXT_SECONDARY).pack(anchor="w")
+        self.flow_video_combo = ctk.CTkComboBox(
+            v_col,
+            values=["Veo 3.1 - Fast", "Veo 3.1 - Quality", "Veo 3.1 - Lite", "Omni 1.1 Flash"],
+            fg_color=SURFACE_INNER,
+            border_color=BORDER_COLOR,
+            text_color=TEXT_PRIMARY,
+            dropdown_fg_color=SURFACE_CARD,
+            dropdown_text_color=TEXT_PRIMARY,
+            corner_radius=CORNER_RADIUS_INPUT,
+            height=34,
+        )
+        self.flow_video_combo.set(flow_cfg.get("default_video_model", "Veo 3.1 - Fast"))
+        self.flow_video_combo.pack(fill="x", pady=(4, 0))
+
+        # Default Image Model
+        img_col = ctk.CTkFrame(flow_grid, fg_color="transparent")
+        img_col.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        ctk.CTkLabel(img_col, text="مدل پیش‌فرض تصویر:", font=FONT_CAPTION, text_color=TEXT_SECONDARY).pack(anchor="w")
+        self.flow_image_combo = ctk.CTkComboBox(
+            img_col,
+            values=["Nano Banana Pro", "Nano Banana 2.1", "Nano Banana 2 Lite"],
+            fg_color=SURFACE_INNER,
+            border_color=BORDER_COLOR,
+            text_color=TEXT_PRIMARY,
+            dropdown_fg_color=SURFACE_CARD,
+            dropdown_text_color=TEXT_PRIMARY,
+            corner_radius=CORNER_RADIUS_INPUT,
+            height=34,
+        )
+        self.flow_image_combo.set(flow_cfg.get("default_image_model", "Nano Banana Pro"))
+        self.flow_image_combo.pack(fill="x", pady=(4, 0))
+
+        # Timeout Field
+        timeout_col = ctk.CTkFrame(flow_grid, fg_color="transparent")
+        timeout_col.pack(side="left", fill="x", expand=True)
+
+        ctk.CTkLabel(timeout_col, text="مهلت تایم‌اوت (ثانیه):", font=FONT_CAPTION, text_color=TEXT_SECONDARY).pack(anchor="w")
+        self.flow_timeout_entry = ctk.CTkEntry(
+            timeout_col,
+            fg_color=SURFACE_INNER,
+            border_color=BORDER_COLOR,
+            text_color=TEXT_PRIMARY,
+            corner_radius=CORNER_RADIUS_INPUT,
+            height=34,
+        )
+        self.flow_timeout_entry.insert(0, str(flow_cfg.get("generation_timeout_sec", 300)))
+        self.flow_timeout_entry.pack(fill="x", pady=(4, 0))
+
+        # Whisper & Other Options Row
+        opts_frame = ctk.CTkFrame(scroll_card, fg_color="transparent")
+        opts_frame.pack(fill="x", padx=12, pady=(8, 12))
 
         # Whisper Model selection
         model_col = ctk.CTkFrame(opts_frame, fg_color="transparent")
@@ -187,7 +264,7 @@ class SettingsDialog(ctk.CTkToplevel):
 
         # Footer Actions
         footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.pack(fill="x", padx=24, pady=(10, 20))
+        footer.pack(fill="x", padx=24, pady=(8, 16))
 
         cancel_btn = SecondaryButton(footer, text="انصراف", width=100, command=self.destroy)
         cancel_btn.pack(side="left")
@@ -209,12 +286,22 @@ class SettingsDialog(ctk.CTkToplevel):
         self.config["whisper_model"] = self.model_combo.get()
         self.config["auto_open_premiere"] = self.open_pr_var.get()
 
+        # Update Flow config
+        flow_cfg = self.config.get("flow_config", {})
+        flow_cfg["default_video_model"] = self.flow_video_combo.get()
+        flow_cfg["default_image_model"] = self.flow_image_combo.get()
+        try:
+            flow_cfg["generation_timeout_sec"] = int(self.flow_timeout_entry.get().strip())
+        except ValueError:
+            flow_cfg["generation_timeout_sec"] = 300
+        self.config["flow_config"] = flow_cfg
+
         # Save to config.json
         config_path = Path("config.json")
         try:
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
-        except Exception as e:
+        except Exception:
             pass
 
         if self.on_save_cb:

@@ -18,6 +18,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from core.archiver import archive_project, check_final_exports
+from core.flow_automator import FlowAutomator
 from core.json_processor import check_dropzone_status, process_gemini_json
 from core.scraper import (
     PROMPT_JSON_EXPORTER,
@@ -93,6 +94,7 @@ class ReelForgeApp(ctk.CTk):
 
         # State Variables
         self.config = self.load_config()
+        self.flow_automator = FlowAutomator(self.config, log_callback=self.log)
         self.current_project_dir: Optional[Path] = None
         self.current_job_data: Optional[Dict[str, Any]] = None
         self.current_brain_data: Optional[Dict[str, Any]] = None
@@ -117,6 +119,17 @@ class ReelForgeApp(ctk.CTk):
             "whisper_model": "base",
             "theme_mode": "dark",
             "auto_open_premiere": True,
+            "flow_config": {
+                "cdp_port": 9222,
+                "chrome_profile_dir": "~/.config/google-chrome-flow",
+                "default_video_model": "Veo 3.1 - Fast",
+                "default_avatar_model": "Omni 1.1 Flash",
+                "default_image_model": "Nano Banana Pro",
+                "default_aspect": "9:16",
+                "default_duration": "8s",
+                "default_resolution": "720p",
+                "generation_timeout_sec": 300,
+            },
         }
         cfg_file = Path("config.json")
         if cfg_file.exists():
@@ -542,9 +555,13 @@ class ReelForgeApp(ctk.CTk):
     def setup_step3_ui(self):
         parent = self.tab_step3
 
-        # Card: JSON Input
-        json_card = CardFrame(parent)
-        json_card.pack(fill="both", expand=True, padx=10, pady=(10, 8))
+        # Scrollable container for Step 3 to ensure all cards fit comfortably
+        scroll_step3 = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        scroll_step3.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Card 1: JSON Input
+        json_card = CardFrame(scroll_step3)
+        json_card.pack(fill="x", padx=10, pady=(6, 8))
 
         h_frame = ctk.CTkFrame(json_card, fg_color="transparent")
         h_frame.pack(fill="x", padx=16, pady=(12, 6))
@@ -577,6 +594,7 @@ class ReelForgeApp(ctk.CTk):
 
         self.json_textbox = ctk.CTkTextbox(
             json_card,
+            height=130,
             fg_color=SURFACE_INNER,
             border_color=BORDER_COLOR,
             text_color=TEXT_PRIMARY,
@@ -584,7 +602,7 @@ class ReelForgeApp(ctk.CTk):
             corner_radius=CORNER_RADIUS_INPUT,
             wrap="word",
         )
-        self.json_textbox.pack(fill="both", expand=True, padx=16, pady=(4, 10))
+        self.json_textbox.pack(fill="x", padx=16, pady=(4, 10))
 
         # Action Buttons in Step 3
         btn_bar = ctk.CTkFrame(json_card, fg_color="transparent")
@@ -635,6 +653,86 @@ class ReelForgeApp(ctk.CTk):
             command=lambda: self.tabview.set("۴. تدوین و پریمیر (Assembly)"),
             state="disabled",
         )
+        self.go_to_step4_btn.pack(side="right")
+
+        # Card 2: Google Flow Automation Card (Terminal CDP)
+        flow_card = CardFrame(scroll_step3, fg_color=SURFACE_CARD)
+        flow_card.pack(fill="x", padx=10, pady=(0, 10))
+
+        fc_head = ctk.CTkFrame(flow_card, fg_color="transparent")
+        fc_head.pack(fill="x", padx=16, pady=(12, 4))
+
+        ctk.CTkLabel(
+            fc_head,
+            text="اتوماسیون مستقیم Google Flow (Terminal CDP)",
+            font=FONT_TITLE,
+            text_color=TEXT_PRIMARY,
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            fc_head,
+            text="اتصال مستقیم و دانلود راش‌ها از طریق Chrome DevTools Protocol بدون مسدودی یا پرچم رباتیک",
+            font=FONT_CAPTION,
+            text_color=TEXT_MUTED,
+        ).pack(side="left", padx=(12, 0))
+
+        # Row 1: Status & Browser Launch
+        row1 = ctk.CTkFrame(flow_card, fg_color="transparent")
+        row1.pack(fill="x", padx=16, pady=(8, 6))
+
+        self.flow_status_pill = StatusPill(row1, text="⚪ وضعیت مرورگر: بررسی نشده", state="neutral")
+        self.flow_status_pill.pack(side="left", padx=(0, 12))
+
+        self.flow_launch_btn = SecondaryButton(
+            row1,
+            text="۱. باز کردن کروم (flow launch)",
+            width=180,
+            command=self.on_flow_launch_clicked,
+        )
+        self.flow_launch_btn.pack(side="left", padx=(0, 8))
+
+        self.flow_doctor_btn = SecondaryButton(
+            row1,
+            text="۲. تست اتصال (flow doctor)",
+            width=170,
+            command=self.on_flow_doctor_clicked,
+        )
+        self.flow_doctor_btn.pack(side="left")
+
+        # Row 2: Automated Generation Controls
+        row2 = ctk.CTkFrame(flow_card, fg_color="transparent")
+        row2.pack(fill="x", padx=16, pady=(6, 14))
+
+        self.flow_dry_run_var = ctk.BooleanVar(value=False)
+        self.flow_dry_run_cb = ctk.CTkCheckBox(
+            row2,
+            text="تست آزمایشی بدون مصرف کردیت (Dry Run)",
+            variable=self.flow_dry_run_var,
+            font=FONT_BODY,
+            text_color=TEXT_PRIMARY,
+            border_color=BORDER_COLOR,
+            checkmark_color="#FFFFFF",
+            fg_color=ACCENT_PRIMARY,
+        )
+        self.flow_dry_run_cb.pack(side="left", padx=(0, 16))
+
+        self.flow_thumb_btn = SecondaryButton(
+            row2,
+            text="🖼 تولید خودکار تصویر تامنیل در Flow",
+            command=self.on_generate_flow_thumbnail_clicked,
+            state="disabled",
+        )
+        self.flow_thumb_btn.pack(side="left", padx=(0, 10))
+
+        self.flow_run_pipeline_btn = PrimaryButton(
+            row2,
+            text="🚀 تولید و دانلود خودکار کل ۶ پلان ویدیویی در Flow",
+            command=self.on_run_flow_pipeline_clicked,
+            state="disabled",
+            fg_color="#059669",
+            hover_color="#047857",
+        )
+        self.flow_run_pipeline_btn.pack(side="right")
         self.go_to_step4_btn.pack(side="right")
 
     # -------------------------------------------------------------
@@ -779,15 +877,19 @@ class ReelForgeApp(ctk.CTk):
                 continue
 
             if p_key == "Audio_BGM":
-                if data["has_audio"]:
+                if data.get("has_audio") and data.get("has_image"):
+                    pill.set_status("موزیک و تصویر تامنیل آماده ✅", "success")
+                elif data.get("has_image"):
+                    pill.set_status("تصویر تامنیل آماده ✅", "success")
+                elif data.get("has_audio"):
                     pill.set_status("موزیک آماده ✅", "success")
                 else:
-                    pill.set_status("بدون موزیک ⚠️", "warning")
+                    pill.set_status("بدون موزیک و تامنیل ⚠️", "warning")
             else:
-                if data["has_video"] and data["has_audio"]:
+                if data.get("has_video") and data.get("has_audio"):
                     pill.set_status("ویدیو و صدا آماده ✅", "success")
-                elif data["has_video"]:
-                    pill.set_status("ویدیو آماده (استخراج صدا) 🔄", "active")
+                elif data.get("has_video"):
+                    pill.set_status("ویدیو آماده ✅", "success")
                 else:
                     all_ready = False
                     pill.set_status("خالی / منتظر ویدیو ⚠️", "warning")
@@ -902,6 +1004,7 @@ class ReelForgeApp(ctk.CTk):
 
     def on_settings_saved(self, new_config: Dict[str, Any]):
         self.config = new_config
+        self.flow_automator = FlowAutomator(self.config, log_callback=self.log)
         self.step3_model_combo.set(self.config.get("whisper_model", "base"))
         self.log("تنظیمات با موفقیت ذخیره و اعمال شد.", "SUCCESS")
 
@@ -986,6 +1089,12 @@ class ReelForgeApp(ctk.CTk):
         self.go_to_step2_btn.configure(state="normal")
         self.open_dropzone_btn.configure(state="normal")
         self.btn_step2_open_docs.configure(state="normal")
+
+        # Check if flow.json exists
+        flow_manifest = project_dir / "02_AI_Brain_JSON" / "flow.json"
+        if flow_manifest.exists():
+            self.flow_thumb_btn.configure(state="normal")
+            self.flow_run_pipeline_btn.configure(state="normal")
 
         # Check if deep_search_result.md exists
         ds_res_file = project_dir / "01_Extracted_Data" / "deep_search_result.md"
@@ -1184,6 +1293,8 @@ class ReelForgeApp(ctk.CTk):
             self.open_dropzone_btn.configure(state="normal")
             self.build_workspace_btn.configure(state="normal")
             self.go_to_step4_btn.configure(state="normal")
+            self.flow_thumb_btn.configure(state="normal")
+            self.flow_run_pipeline_btn.configure(state="normal")
 
             self.log(msg, "SUCCESS")
             self.refresh_dropzone_checklist()
@@ -1224,6 +1335,168 @@ class ReelForgeApp(ctk.CTk):
             dropzone = self.current_project_dir / "03_Raw_DropZone"
             if dropzone.exists():
                 open_file_or_folder(dropzone)
+
+    # -------------------------------------------------------------
+    # Google Flow (Terminal CDP) Handlers
+    # -------------------------------------------------------------
+    def on_flow_launch_clicked(self):
+        self.log("🌐 در حال راه‌اندازی مرورگر Google Chrome (پورت CDP 9222)...", "INFO")
+        self.flow_launch_btn.configure(state="disabled")
+
+        def worker():
+            try:
+                ok = self.flow_automator.launch_chrome()
+                if ok:
+                    self.after(0, lambda: self.flow_status_pill.set_status("مرورگر باز شد - نیازمند لاگین در اکانت ⚠️", "warning"))
+                else:
+                    self.after(0, lambda: self.flow_status_pill.set_status("خطا در باز کردن کروم 🔴", "danger"))
+            except Exception as e:
+                self.log(f"خطا در اجرای flow launch: {e}", "ERROR")
+                self.after(0, lambda: self.flow_status_pill.set_status("خطا در اجرا 🔴", "danger"))
+            finally:
+                self.after(0, lambda: self.flow_launch_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_flow_doctor_clicked(self):
+        self.log("🩺 در حال بررسی وضعیت اتصال به Google Flow (flow doctor)...", "INFO")
+        self.flow_doctor_btn.configure(state="disabled")
+
+        def worker():
+            try:
+                diag = self.flow_automator.run_diagnostics()
+                cdp_open = diag.get("cdpOpen", False)
+                auth_ok = diag.get("googleAuthenticated", False)
+
+                if cdp_open and auth_ok:
+                    self.after(0, lambda: self.flow_status_pill.set_status("🟢 متصل و آماده (Port 9222 & Auth OK)", "success"))
+                elif cdp_open and not auth_ok:
+                    self.after(0, lambda: self.flow_status_pill.set_status("🔴 نیازمند لاگین در کروم (Port Open)", "danger"))
+                elif not cdp_open:
+                    self.after(0, lambda: self.flow_status_pill.set_status("🔴 پورت 9222 بسته (کروم باز نیست)", "danger"))
+                else:
+                    self.after(0, lambda: self.flow_status_pill.set_status("🔴 خطا در اتصال", "danger"))
+            except Exception as e:
+                self.log(f"خطا در بررسی flow doctor: {e}", "ERROR")
+                self.after(0, lambda: self.flow_status_pill.set_status("خطا در بررسی 🔴", "danger"))
+            finally:
+                self.after(0, lambda: self.flow_doctor_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_generate_flow_thumbnail_clicked(self):
+        if not self.current_project_dir:
+            messagebox.showwarning("پروژه مشخص نشده", "ابتدا پروژه را انتخاب یا ایجاد کنید.")
+            return
+
+        thumb_prompt = ""
+        thumb_prompt_file = self.current_project_dir / "02_AI_Brain_JSON" / "thumbnail_bg_prompt.txt"
+        if thumb_prompt_file.exists():
+            content = thumb_prompt_file.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            for i, line in enumerate(lines):
+                if "THUMBNAIL BACKGROUND PROMPT" in line and i + 1 < len(lines):
+                    thumb_prompt = lines[i + 1].strip()
+                    break
+            if not thumb_prompt:
+                thumb_prompt = content.strip()
+
+        if not thumb_prompt and self.current_brain_data:
+            thumb_prompt = self.current_brain_data.get("thumbnail_data", {}).get("bg_image_prompt", "")
+
+        if not thumb_prompt:
+            messagebox.showwarning("پرامپت تامنیل یافت نشد", "پرامپت تصویر تامنیل در پوشه 02_AI_Brain_JSON یافت نشد.")
+            return
+
+        flow_cfg = self.config.get("flow_config", {})
+        model = flow_cfg.get("default_image_model", "Nano Banana Pro")
+
+        self.flow_thumb_btn.configure(state="disabled")
+        self.set_progress(0.2, indeterminate=True)
+        self.log(f"🖼 شروع تولید خودکار تصویر پس‌زمینه تامنیل در Google Flow (مدل: {model})...")
+
+        def worker():
+            try:
+                ok = self.flow_automator.generate_thumbnail_bg(
+                    project_root=self.current_project_dir,
+                    bg_prompt=thumb_prompt,
+                    model=model,
+                )
+
+                def done():
+                    self.flow_thumb_btn.configure(state="normal")
+                    self.set_progress(1.0)
+                    self.refresh_dropzone_checklist()
+                    if ok:
+                        messagebox.showinfo("موفقیت", "تصویر پس‌زمینه تامنیل با موفقیت تولید و در Audio_BGM ذخیره شد.")
+                    else:
+                        messagebox.showerror("خطا", "تولید تصویر پس‌زمینه تامنیل با خطا مواجه شد. لطفاً کنسول لاگ را بررسی کنید.")
+
+                self.after(0, done)
+            except Exception as e:
+                self.log(f"خطا در تولید تامنیل: {e}", "ERROR")
+                self.after(0, lambda: self.flow_thumb_btn.configure(state="normal"))
+                self.after(0, lambda: self.set_progress(0.0))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_run_flow_pipeline_clicked(self):
+        if not self.current_project_dir:
+            messagebox.showwarning("پروژه مشخص نشده", "ابتدا پروژه را انتخاب یا ایجاد کنید.")
+            return
+
+        flow_json_path = self.current_project_dir / "02_AI_Brain_JSON" / "flow.json"
+        if not flow_json_path.exists():
+            messagebox.showwarning("فایل flow.json یافت نشد", "لطفاً ابتدا کد JSON را پردازش کنید تا فایل flow.json تولید شود.")
+            return
+
+        dry_run = self.flow_dry_run_var.get()
+        self.flow_run_pipeline_btn.configure(state="disabled")
+        self.set_progress(0.1, indeterminate=True)
+
+        def worker():
+            try:
+                # Diagnostics check before live generation
+                if not dry_run:
+                    self.log("🩺 بررسی وضعیت اتصال مرورگر قبل از شروع تولید راش‌ها...", "INFO")
+                    diag = self.flow_automator.run_diagnostics()
+                    cdp_open = diag.get("cdpOpen", False)
+                    auth_ok = diag.get("googleAuthenticated", False)
+
+                    if not (cdp_open and auth_ok):
+                        msg = "اتصال به Google Flow آماده نیست!\n\n"
+                        if not cdp_open:
+                            msg += "• پورت 9222 مرورگر کروم باز نیست. لطفاً ابتدا دکمه «۱. باز کردن کروم (flow launch)» را بزنید.\n"
+                        if not auth_ok:
+                            msg += "• در مرورگر کروم بازشده وارد حساب کاربری گوگل خود شوید.\n"
+                        self.log(f"❌ {msg}", "ERROR")
+                        self.after(0, lambda: messagebox.showerror("عدم اتصال به گوگل فلو", msg))
+                        self.after(0, lambda: self.flow_run_pipeline_btn.configure(state="normal"))
+                        self.after(0, lambda: self.set_progress(0.0))
+                        return
+
+                self.log("🚀 آغاز پایپلاین تولید راش‌های ویدیویی در Google Flow...", "INFO")
+                ok = self.flow_automator.run_declarative_pipeline(
+                    project_root=self.current_project_dir,
+                    dry_run=dry_run,
+                )
+
+                def done():
+                    self.flow_run_pipeline_btn.configure(state="normal")
+                    self.set_progress(1.0)
+                    self.refresh_dropzone_checklist()
+                    if ok:
+                        messagebox.showinfo("عملیات پایان یافت", "تولید و دانلود راش‌های ویدیویی Google Flow با موفقیت انجام شد.")
+                    else:
+                        messagebox.showwarning("پایان با اخطار", "اجرای پایپلاین به پایان رسید اما ممکن است برخی فایل‌ها دانلود نشده باشند. لطفاً کنسول لاگ و چک‌لیست گام ۴ را بررسی کنید.")
+
+                self.after(0, done)
+            except Exception as e:
+                self.log(f"خطا در اجرای پایپلاین: {e}", "ERROR")
+                self.after(0, lambda: self.flow_run_pipeline_btn.configure(state="normal"))
+                self.after(0, lambda: self.set_progress(0.0))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     # -------------------------------------------------------------
     # Step 3 Workflows: Build Workspace & Subtitles
