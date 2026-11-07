@@ -306,6 +306,135 @@ async function main() {
         activeUrl: url,
         projectId
       }, null, 2));
+    } else if (action === 'open-new-project') {
+      let currentUrl = page.url();
+      let created = false;
+
+      if (!currentUrl.includes('flow.google.com')) {
+        await page.goto('https://flow.google.com', { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(2000);
+      }
+
+      await page.bringToFront();
+
+      // Look for New Project buttons (Persian and English UI support)
+      const newProjectSelectors = [
+        'button:has-text("پروژه جدید")',
+        'button:has-text("New project")',
+        'button:has-text("پروژه نو")',
+        'button[aria-label*="پروژه جدید"]',
+        'button[aria-label*="New project"]',
+        'button[aria-label*="Create"]',
+        'a[href*="/project/create"]',
+        '.new-project-button',
+        '.create-project-card',
+        'mat-card:has-text("پروژه جدید")',
+        'mat-card:has-text("New project")'
+      ];
+
+      for (const sel of newProjectSelectors) {
+        try {
+          const btn = page.locator(sel).first();
+          if (await btn.isVisible({ timeout: 1000 })) {
+            await btn.click();
+            await page.waitForTimeout(2000);
+            created = true;
+            break;
+          }
+        } catch (e) {}
+      }
+
+      // If still not on a project canvas, look for first project card
+      if (!page.url().includes('/project/')) {
+        try {
+          const firstCard = page.locator('a[href*="/project/"], .project-card').first();
+          if (await firstCard.isVisible({ timeout: 1000 })) {
+            await firstCard.click();
+            await page.waitForTimeout(2000);
+            created = true;
+          }
+        } catch (e) {}
+      }
+
+      try {
+        await ensureDirectMode(page);
+      } catch (e) {}
+
+      await page.bringToFront();
+      const finalUrl = page.url();
+      const projectId = finalUrl.includes('/project/') ? finalUrl.split('/project/')[1].split('/')[0].split('?')[0] : null;
+
+      console.log(JSON.stringify({
+        ok: true,
+        action: 'open-new-project',
+        created,
+        activeUrl: finalUrl,
+        projectId,
+        message: created ? "پروژه جدید با موفقیت در گوگل فلو ایجاد شد." : "صفحه گوگل فلو آماده به کار است."
+      }, null, 2));
+    } else if (action === 'insert-prompt') {
+      let promptText = '';
+      if (options['prompt-file'] && fs.existsSync(options['prompt-file'])) {
+        promptText = fs.readFileSync(options['prompt-file'], 'utf8').trim();
+      } else if (options.prompt) {
+        promptText = options.prompt.trim();
+      }
+
+      if (!promptText) {
+        throw new Error("متن پرامپت خالی است.");
+      }
+
+      await page.bringToFront();
+
+      // Find the prompt editor in Google Flow
+      const inputSelectors = [
+        '.ProseMirror[contenteditable="true"]',
+        '.ProseMirror',
+        'div[contenteditable="true"][role="textbox"]',
+        'div[contenteditable="true"]',
+        'textarea.prompt-input',
+        'textarea[aria-label*="prompt" i]',
+        'textarea[placeholder*="prompt" i]',
+        'textarea[placeholder*="پرامپت" i]',
+        'textarea'
+      ];
+
+      let inputEl = null;
+      for (const sel of inputSelectors) {
+        try {
+          const el = page.locator(sel).first();
+          if (await el.isVisible({ timeout: 1000 })) {
+            inputEl = el;
+            break;
+          }
+        } catch (e) {}
+      }
+
+      if (!inputEl) {
+        throw new Error("کادر متنی پرامپت در Google Flow پیدا نشد. لطفاً صفحه پروژه را در کروم باز نگه دارید.");
+      }
+
+      await inputEl.scrollIntoViewIfNeeded();
+      await inputEl.click();
+      await page.waitForTimeout(150);
+
+      // Clear existing content
+      await page.keyboard.press('Control+A');
+      await page.keyboard.press('Backspace');
+      await page.waitForTimeout(100);
+
+      // Insert text with full Unicode / Persian support
+      await page.keyboard.insertText(promptText);
+      await page.waitForTimeout(300);
+
+      await page.bringToFront();
+
+      console.log(JSON.stringify({
+        ok: true,
+        action: 'insert-prompt',
+        length: promptText.length,
+        message: "متن پرامپت با موفقیت در کادر گوگل فلو درج شد."
+      }, null, 2));
     } else if (action === 'generate-thumbnail') {
       const projectPath = options.project;
       const prompt = options.prompt;

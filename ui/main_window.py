@@ -98,6 +98,7 @@ class ReelForgeApp(ctk.CTk):
         self.current_project_dir: Optional[Path] = None
         self.current_job_data: Optional[Dict[str, Any]] = None
         self.current_brain_data: Optional[Dict[str, Any]] = None
+        self.hil_plans_data: Dict[str, Dict[str, Any]] = {}
         self.log_queue = queue.Queue()
 
         # Build GUI
@@ -655,85 +656,281 @@ class ReelForgeApp(ctk.CTk):
         )
         self.go_to_step4_btn.pack(side="right")
 
-        # Card 2: Google Flow Automation Card (Terminal CDP)
-        flow_card = CardFrame(scroll_step3, fg_color=SURFACE_CARD)
-        flow_card.pack(fill="x", padx=10, pady=(0, 10))
+        # Card 2: Rebuilt Human-in-the-Loop Video Creation Studio
+        hil_card = CardFrame(scroll_step3, fg_color=SURFACE_CARD)
+        hil_card.pack(fill="x", padx=10, pady=(0, 14))
 
-        fc_head = ctk.CTkFrame(flow_card, fg_color="transparent")
-        fc_head.pack(fill="x", padx=16, pady=(12, 4))
+        # Header
+        hil_head = ctk.CTkFrame(hil_card, fg_color="transparent")
+        hil_head.pack(fill="x", padx=16, pady=(14, 4))
 
         ctk.CTkLabel(
-            fc_head,
-            text="اتوماسیون مستقیم Google Flow (Terminal CDP)",
+            hil_head,
+            text="🎬 استودیو همیار ساخت ویدیو و تصویر (همکاری انسان و هوش مصنوعی)",
             font=FONT_TITLE,
             text_color=TEXT_PRIMARY,
         ).pack(side="left")
 
         ctk.CTkLabel(
-            fc_head,
-            text="اتصال مستقیم و دانلود راش‌ها از طریق Chrome DevTools Protocol بدون مسدودی یا پرچم رباتیک",
+            hil_head,
+            text="کنترل خلاقانه تنظیمات توسط شما • درج خودکار متن توسط اپلیکیشن • مدیریت لندینگ دانلودی‌ها",
             font=FONT_CAPTION,
             text_color=TEXT_MUTED,
         ).pack(side="left", padx=(12, 0))
 
-        # Row 1: Status & Browser Launch
-        row1 = ctk.CTkFrame(flow_card, fg_color="transparent")
-        row1.pack(fill="x", padx=16, pady=(8, 6))
+        # ---------------------------------------------------------
+        # بخش ۱: باز کردن کروم و ایجاد پروژه جدید
+        # ---------------------------------------------------------
+        step1_box = ctk.CTkFrame(hil_card, fg_color=SURFACE_INNER, corner_radius=10)
+        step1_box.pack(fill="x", padx=16, pady=(10, 8))
 
-        self.flow_status_pill = StatusPill(row1, text="⚪ وضعیت مرورگر: بررسی نشده", state="neutral")
-        self.flow_status_pill.pack(side="left", padx=(0, 12))
+        s1_head = ctk.CTkFrame(step1_box, fg_color="transparent")
+        s1_head.pack(fill="x", padx=14, pady=(10, 6))
 
-        self.flow_launch_btn = SecondaryButton(
-            row1,
-            text="۱. باز کردن کروم (flow launch)",
-            width=180,
-            command=self.on_flow_launch_clicked,
-        )
-        self.flow_launch_btn.pack(side="left", padx=(0, 8))
-
-        self.flow_doctor_btn = SecondaryButton(
-            row1,
-            text="۲. تست اتصال (flow doctor)",
-            width=170,
-            command=self.on_flow_doctor_clicked,
-        )
-        self.flow_doctor_btn.pack(side="left")
-
-        # Row 2: Automated Generation Controls
-        row2 = ctk.CTkFrame(flow_card, fg_color="transparent")
-        row2.pack(fill="x", padx=16, pady=(6, 14))
-
-        self.flow_dry_run_var = ctk.BooleanVar(value=False)
-        self.flow_dry_run_cb = ctk.CTkCheckBox(
-            row2,
-            text="تست آزمایشی بدون مصرف کردیت (Dry Run)",
-            variable=self.flow_dry_run_var,
-            font=FONT_BODY,
+        ctk.CTkLabel(
+            s1_head,
+            text="۱. راه‌اندازی مرورگر و ایجاد پروژه نو در Google Flow",
+            font=FONT_BOLD,
             text_color=TEXT_PRIMARY,
+        ).pack(side="left")
+
+        self.hil_status_pill = StatusPill(s1_head, text="⚪ وضعیت کروم: بررسی نشده", state="neutral")
+        self.hil_status_pill.pack(side="right")
+
+        s1_btns = ctk.CTkFrame(step1_box, fg_color="transparent")
+        s1_btns.pack(fill="x", padx=14, pady=(0, 10))
+
+        self.hil_open_chrome_btn = PrimaryButton(
+            s1_btns,
+            text="🌐 ۱. باز کردن کروم و ایجاد پروژه جدید",
+            width=270,
+            command=self.on_open_chrome_and_new_project_clicked,
+        )
+        self.hil_open_chrome_btn.pack(side="left", padx=(0, 10))
+
+        self.hil_doctor_btn = SecondaryButton(
+            s1_btns,
+            text="🩺 تست وضعیت اتصال کروم (Doctor)",
+            width=200,
+            command=self.on_check_chrome_status_clicked,
+        )
+        self.hil_doctor_btn.pack(side="left")
+
+        # ---------------------------------------------------------
+        # بخش ۲: نوت تنظیمات پیشنهادی + انتخاب پلان و درج متن
+        # ---------------------------------------------------------
+        step2_box = ctk.CTkFrame(hil_card, fg_color=SURFACE_INNER, corner_radius=10)
+        step2_box.pack(fill="x", padx=16, pady=(0, 8))
+
+        s2_head = ctk.CTkFrame(step2_box, fg_color="transparent")
+        s2_head.pack(fill="x", padx=14, pady=(10, 4))
+
+        ctk.CTkLabel(
+            s2_head,
+            text="۲. توصیه تنظیمات پیشنهادی (بخش نوت) و درج خودکار پرامپت در کروم",
+            font=FONT_BOLD,
+            text_color=TEXT_PRIMARY,
+        ).pack(side="left")
+
+        # Plan selector row
+        sel_row = ctk.CTkFrame(step2_box, fg_color="transparent")
+        sel_row.pack(fill="x", padx=14, pady=(4, 6))
+
+        ctk.CTkLabel(
+            sel_row,
+            text="🎯 انتخاب پلان / مدیا:",
+            font=FONT_BOLD,
+            text_color=TEXT_SECONDARY,
+        ).pack(side="left", padx=(0, 8))
+
+        self.hil_plan_combo = ctk.CTkComboBox(
+            sel_row,
+            values=["پلان ۰۱: قلاب توجه آواتار (Hook Avatar)"],
+            width=380,
+            height=32,
+            fg_color=SURFACE_CARD,
             border_color=BORDER_COLOR,
-            checkmark_color="#FFFFFF",
-            fg_color=ACCENT_PRIMARY,
+            text_color=TEXT_PRIMARY,
+            command=self.on_hil_plan_selected,
         )
-        self.flow_dry_run_cb.pack(side="left", padx=(0, 16))
+        self.hil_plan_combo.pack(side="left")
 
-        self.flow_thumb_btn = SecondaryButton(
-            row2,
-            text="🖼 تولید خودکار تصویر تامنیل در Flow",
-            command=self.on_generate_flow_thumbnail_clicked,
-            state="disabled",
+        # Recommended Settings Note Frame (بخش نوت)
+        note_frame = ctk.CTkFrame(
+            step2_box,
+            fg_color=SURFACE_CARD,
+            border_color="#3B82F6",
+            border_width=1,
+            corner_radius=8,
         )
-        self.flow_thumb_btn.pack(side="left", padx=(0, 10))
+        note_frame.pack(fill="x", padx=14, pady=(4, 8))
 
-        self.flow_run_pipeline_btn = PrimaryButton(
-            row2,
-            text="🚀 تولید و دانلود خودکار کل ۶ پلان ویدیویی در Flow",
-            command=self.on_run_flow_pipeline_clicked,
-            state="disabled",
+        note_head = ctk.CTkFrame(note_frame, fg_color="transparent")
+        note_head.pack(fill="x", padx=12, pady=(8, 4))
+
+        ctk.CTkLabel(
+            note_head,
+            text="💡 بخش نوت: تنظیمات پیشنهادی به کاربر (Human Action Guide):",
+            font=FONT_BOLD,
+            text_color="#60A5FA",
+        ).pack(side="left")
+
+        # Badges grid row for recommendations
+        rec_grid = ctk.CTkFrame(note_frame, fg_color="transparent")
+        rec_grid.pack(fill="x", padx=12, pady=(0, 4))
+
+        self.hil_rec_model_lbl = ctk.CTkLabel(
+            rec_grid,
+            text="🏷️ مدل پیشنهادی: Omni 1.1 Flash",
+            font=FONT_BOLD,
+            text_color=TEXT_PRIMARY,
+        )
+        self.hil_rec_model_lbl.pack(side="left", padx=(0, 16))
+
+        self.hil_rec_aspect_lbl = ctk.CTkLabel(
+            rec_grid,
+            text="📐 کادر: 9:16 (عمودی ریلز)",
+            font=FONT_BODY,
+            text_color=TEXT_SECONDARY,
+        )
+        self.hil_rec_aspect_lbl.pack(side="left", padx=(0, 16))
+
+        self.hil_rec_duration_lbl = ctk.CTkLabel(
+            rec_grid,
+            text="⏱️ زمان: 8 ثانیه (8s)",
+            font=FONT_BODY,
+            text_color=TEXT_SECONDARY,
+        )
+        self.hil_rec_duration_lbl.pack(side="left", padx=(0, 16))
+
+        self.hil_rec_res_lbl = ctk.CTkLabel(
+            rec_grid,
+            text="📺 کیفیت: 720p / 1080p",
+            font=FONT_BODY,
+            text_color=TEXT_SECONDARY,
+        )
+        self.hil_rec_res_lbl.pack(side="left")
+
+        self.hil_rec_note_lbl = ctk.CTkLabel(
+            note_frame,
+            text="📌 نکته انسانی: مقادیر بالا را به صورت دستی در منوی Settings گوگل فلو اعمال نمایید؛ مدل اتوماتیک تغییر داده نمی‌شود تا کنترل کامل در دست شما باشد.",
+            font=FONT_CAPTION,
+            text_color=TEXT_MUTED,
+            anchor="w",
+            justify="right",
+        )
+        self.hil_rec_note_lbl.pack(fill="x", padx=12, pady=(0, 8))
+
+        # Prompt Preview Textbox
+        self.hil_prompt_preview = ctk.CTkTextbox(
+            step2_box,
+            height=70,
+            fg_color=SURFACE_CARD,
+            border_color=BORDER_COLOR,
+            text_color=TEXT_PRIMARY,
+            font=FONT_MONO,
+            corner_radius=CORNER_RADIUS_INPUT,
+            wrap="word",
+        )
+        self.hil_prompt_preview.pack(fill="x", padx=14, pady=(0, 8))
+
+        # Prompt Action Buttons
+        p_btns = ctk.CTkFrame(step2_box, fg_color="transparent")
+        p_btns.pack(fill="x", padx=14, pady=(0, 10))
+
+        self.hil_insert_text_btn = PrimaryButton(
+            p_btns,
+            text="✍️ ۲. درج متن در کادر پرامپت کروم",
+            command=self.on_insert_prompt_to_chrome_clicked,
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            width=250,
+        )
+        self.hil_insert_text_btn.pack(side="left", padx=(0, 10))
+
+        self.hil_copy_prompt_btn = SecondaryButton(
+            p_btns,
+            text="📋 کپی پرامپت در کلیپ‌بورد",
+            command=self.on_copy_hil_prompt_clicked,
+            width=180,
+        )
+        self.hil_copy_prompt_btn.pack(side="left")
+
+        # ---------------------------------------------------------
+        # بخش ۳: پوشه لندینگ دانلودی‌ها
+        # ---------------------------------------------------------
+        step3_box = ctk.CTkFrame(hil_card, fg_color=SURFACE_INNER, corner_radius=10)
+        step3_box.pack(fill="x", padx=16, pady=(0, 8))
+
+        s3_head = ctk.CTkFrame(step3_box, fg_color="transparent")
+        s3_head.pack(fill="x", padx=14, pady=(10, 4))
+
+        ctk.CTkLabel(
+            s3_head,
+            text="۳. پوشه لندینگ پیج دانلودی‌ها و راش‌ها",
+            font=FONT_BOLD,
+            text_color=TEXT_PRIMARY,
+        ).pack(side="left")
+
+        s3_btns = ctk.CTkFrame(step3_box, fg_color="transparent")
+        s3_btns.pack(fill="x", padx=14, pady=(4, 10))
+
+        self.hil_open_landing_btn = SecondaryButton(
+            s3_btns,
+            text="📂 ۳. باز کردن پوشه لندینگ دانلودی‌ها (Downloads)",
+            command=self.open_landing_downloads_folder,
+            width=280,
+        )
+        self.hil_open_landing_btn.pack(side="left", padx=(0, 10))
+
+        self.hil_open_dropzone_btn = SecondaryButton(
+            s3_btns,
+            text="📁 باز کردن پوشه DropZone پروژه",
+            command=self.open_dropzone_folder,
+            width=200,
+        )
+        self.hil_open_dropzone_btn.pack(side="left", padx=(0, 10))
+
+        self.hil_auto_import_btn = SecondaryButton(
+            s3_btns,
+            text="📥 انتقال فایل‌های دانلودی به DropZone",
+            command=self.on_auto_import_downloads_clicked,
+            width=230,
+        )
+        self.hil_auto_import_btn.pack(side="left")
+
+        # ---------------------------------------------------------
+        # بخش ۴: تایید دانلود و رفتن به مرحله بعد
+        # ---------------------------------------------------------
+        step4_box = ctk.CTkFrame(hil_card, fg_color=SURFACE_INNER, corner_radius=10)
+        step4_box.pack(fill="x", padx=16, pady=(0, 12))
+
+        s4_inner = ctk.CTkFrame(step4_box, fg_color="transparent")
+        s4_inner.pack(fill="x", padx=14, pady=10)
+
+        ctk.CTkLabel(
+            s4_inner,
+            text="۴. پس از دانلود راش‌ها و قرارگیری در پوشه لندینگ، دکمه تایید زیر را بزنید:",
+            font=FONT_BODY,
+            text_color=TEXT_SECONDARY,
+        ).pack(side="left")
+
+        self.hil_confirm_next_btn = PrimaryButton(
+            s4_inner,
+            text="✅ ۴. تایید دانلود تصاویر/ویدیوها و رفتن به مرحله بعد (تدوین و پریمیر) ◀",
+            command=self.on_confirm_downloads_and_proceed_clicked,
+            height=40,
             fg_color="#059669",
             hover_color="#047857",
         )
-        self.flow_run_pipeline_btn.pack(side="right")
-        self.go_to_step4_btn.pack(side="right")
+        self.hil_confirm_next_btn.pack(side="right")
+
+        # Compatibility aliases
+        self.flow_status_pill = self.hil_status_pill
+        self.flow_launch_btn = self.hil_open_chrome_btn
+        self.flow_doctor_btn = self.hil_doctor_btn
+        self.flow_thumb_btn = self.hil_insert_text_btn
+        self.flow_run_pipeline_btn = self.hil_confirm_next_btn
 
     # -------------------------------------------------------------
     # Step 4: Assembly, Subtitles & Premiere
@@ -1093,8 +1290,7 @@ class ReelForgeApp(ctk.CTk):
         # Check if flow.json exists
         flow_manifest = project_dir / "02_AI_Brain_JSON" / "flow.json"
         if flow_manifest.exists():
-            self.flow_thumb_btn.configure(state="normal")
-            self.flow_run_pipeline_btn.configure(state="normal")
+            self.load_plans_into_hil_studio()
 
         # Check if deep_search_result.md exists
         ds_res_file = project_dir / "01_Extracted_Data" / "deep_search_result.md"
@@ -1293,8 +1489,9 @@ class ReelForgeApp(ctk.CTk):
             self.open_dropzone_btn.configure(state="normal")
             self.build_workspace_btn.configure(state="normal")
             self.go_to_step4_btn.configure(state="normal")
-            self.flow_thumb_btn.configure(state="normal")
-            self.flow_run_pipeline_btn.configure(state="normal")
+            self.hil_insert_text_btn.configure(state="normal")
+            self.hil_confirm_next_btn.configure(state="normal")
+            self.load_plans_into_hil_studio()
 
             self.log(msg, "SUCCESS")
             self.refresh_dropzone_checklist()
@@ -1335,6 +1532,308 @@ class ReelForgeApp(ctk.CTk):
             dropzone = self.current_project_dir / "03_Raw_DropZone"
             if dropzone.exists():
                 open_file_or_folder(dropzone)
+
+    # -------------------------------------------------------------
+    # Rebuilt Human-in-the-Loop Video Creation Studio Handlers
+    # -------------------------------------------------------------
+    def load_plans_into_hil_studio(self):
+        """
+        Loads plans from 02_AI_Brain_JSON/flow.json and gemini_master_output.json
+        into the HIL Studio selector, note card, and prompt preview.
+        """
+        if not self.current_project_dir:
+            return
+
+        brain_dir = self.current_project_dir / "02_AI_Brain_JSON"
+        flow_json_path = brain_dir / "flow.json"
+        master_json_path = brain_dir / "gemini_master_output.json"
+        thumb_file = brain_dir / "thumbnail_bg_prompt.txt"
+
+        plans_dict: Dict[str, Dict[str, Any]] = {}
+
+        # 1. Parse flow.json if available
+        if flow_json_path.exists():
+            try:
+                with open(flow_json_path, "r", encoding="utf-8") as f:
+                    flow_data = json.load(f)
+                    defaults = flow_data.get("defaults", {})
+                    for i, sc in enumerate(flow_data.get("scenes", []), start=1):
+                        name = sc.get("name", f"Plan_{i:02d}")
+                        prompt = sc.get("prompt", "")
+                        model = sc.get("model", defaults.get("model", "Veo 3.1 - Fast"))
+                        aspect = sc.get("aspect", defaults.get("aspect", "9:16"))
+                        duration = sc.get("duration", defaults.get("duration", "8s"))
+                        res = sc.get("resolution", defaults.get("resolution", "720p"))
+
+                        is_avatar = "AVATAR" in name.upper() or i in (1, 6)
+                        if is_avatar:
+                            note = "پلان آواتار سخنگوی فارسی است. لطفاً در منوی فلو مدل آواتار سخنگو یا Omni 1.1 Flash را دستی انتخاب کنید."
+                        else:
+                            note = f"پلان ویدیویی بی‌رول صنعتی است. لطفاً مدل {model} و کادر 9:16 را دستی در فلو تنظیم نمایید."
+
+                        display_name = f"پلان {i:02d}: {name}"
+                        plans_dict[display_name] = {
+                            "name": name,
+                            "plan_number": i,
+                            "model": model,
+                            "aspect": f"{aspect} (عمودی ریلز)",
+                            "duration": f"{duration}",
+                            "resolution": res,
+                            "media": "ویدیو (Video)",
+                            "prompt": prompt,
+                            "note": note,
+                        }
+            except Exception as e:
+                logger.warning(f"Error parsing flow.json for HIL studio: {e}")
+
+        # 2. Thumbnail background
+        thumb_prompt = ""
+        if thumb_file.exists():
+            try:
+                content = thumb_file.read_text(encoding="utf-8")
+                lines = content.splitlines()
+                for idx, line in enumerate(lines):
+                    if "THUMBNAIL BACKGROUND PROMPT" in line and idx + 1 < len(lines):
+                        thumb_prompt = lines[idx + 1].strip()
+                        break
+                if not thumb_prompt:
+                    for line in lines:
+                        if line.strip() and not line.startswith("🖼") and not line.startswith("🎯"):
+                            thumb_prompt = line.strip()
+                            break
+            except Exception:
+                pass
+
+        if not thumb_prompt and master_json_path.exists():
+            try:
+                with open(master_json_path, "r", encoding="utf-8") as f:
+                    m = json.load(f)
+                    thumb_prompt = m.get("thumbnail_data", {}).get("bg_image_prompt", "")
+            except Exception:
+                pass
+
+        if thumb_prompt:
+            plans_dict["کاور تامنیل (Thumbnail Cover)"] = {
+                "name": "Thumbnail_Cover",
+                "plan_number": 0,
+                "model": "Nano Banana 2.1 / Pro",
+                "aspect": "9:16 (عمودی ریلز)",
+                "duration": "تک فریم (عکس)",
+                "resolution": "1080p",
+                "media": "تصویر (Image)",
+                "prompt": thumb_prompt,
+                "note": "این بخش برای تولید تصویر کاور است. لطفاً مدیا را روی Image و نسبت تصویر را روی 9:16 ست نمایید.",
+            }
+
+        self.hil_plans_data = plans_dict
+        combo_values = list(plans_dict.keys())
+        if combo_values:
+            self.hil_plan_combo.configure(values=combo_values)
+            self.hil_plan_combo.set(combo_values[0])
+            self.on_hil_plan_selected(combo_values[0])
+            self.hil_insert_text_btn.configure(state="normal")
+            self.hil_copy_prompt_btn.configure(state="normal")
+
+    def on_hil_plan_selected(self, choice: str):
+        data = self.hil_plans_data.get(choice)
+        if not data:
+            return
+
+        self.hil_rec_model_lbl.configure(text=f"🏷️ مدل: {data.get('model', 'Veo 3.1')}")
+        self.hil_rec_aspect_lbl.configure(text=f"📐 کادر: {data.get('aspect', '9:16')}")
+        self.hil_rec_duration_lbl.configure(text=f"⏱️ زمان: {data.get('duration', '8s')}")
+        self.hil_rec_res_lbl.configure(text=f"📺 کیفیت: {data.get('resolution', '720p')}")
+        self.hil_rec_note_lbl.configure(text=f"💡 توصیه انسانی: {data.get('note', '')}")
+
+        prompt = data.get("prompt", "")
+        self.hil_prompt_preview.delete("1.0", "end")
+        self.hil_prompt_preview.insert("1.0", prompt)
+
+    def on_open_chrome_and_new_project_clicked(self):
+        """
+        ۱. اپ (با زدن دکمه‌اش توسط کاربر) کروم را باز کند و پروژه جدید ایجاد کند.
+        """
+        self.log("🌐 گام ۱: در حال اجرای مرورگر کروم و ایجاد پروژه جدید در Google Flow...", "INFO")
+        self.hil_open_chrome_btn.configure(state="disabled")
+        self.set_progress(0.2, indeterminate=True)
+
+        def worker():
+            try:
+                res = self.flow_automator.open_flow_new_project()
+                ok = res.get("ok", False)
+                if ok:
+                    self.after(0, lambda: self.hil_status_pill.set_status("🟢 کروم متصل - پروژه نو آماده است", "success"))
+                    self.log("✅ پروژه نو در Google Flow ایجاد و آماده به کار شد.", "SUCCESS")
+                else:
+                    self.after(0, lambda: self.hil_status_pill.set_status("⚠️ کروم باز شد (بررسی لاگین)", "warning"))
+            except Exception as e:
+                self.log(f"خطا در ایجاد پروژه جدید: {e}", "ERROR")
+                self.after(0, lambda: self.hil_status_pill.set_status("🔴 خطا در اتصال کروم", "danger"))
+            finally:
+                self.after(0, lambda: self.hil_open_chrome_btn.configure(state="normal"))
+                self.after(0, lambda: self.set_progress(0.0))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_check_chrome_status_clicked(self):
+        self.log("🩺 در حال بررسی وضعیت اتصال به Chrome و Google Flow...", "INFO")
+        self.hil_doctor_btn.configure(state="disabled")
+
+        def worker():
+            try:
+                diag = self.flow_automator.run_diagnostics()
+                cdp_open = diag.get("cdpOpen", False)
+                auth_ok = diag.get("googleAuthenticated", False)
+
+                if cdp_open and auth_ok:
+                    self.after(0, lambda: self.hil_status_pill.set_status("🟢 کروم متصل و لاگین OK", "success"))
+                elif cdp_open and not auth_ok:
+                    self.after(0, lambda: self.hil_status_pill.set_status("🔴 نیازمند لاگین در کروم", "danger"))
+                elif not cdp_open:
+                    self.after(0, lambda: self.hil_status_pill.set_status("🔴 پورت 9222 بسته (کروم باز نیست)", "danger"))
+                else:
+                    self.after(0, lambda: self.hil_status_pill.set_status("🔴 خطا در اتصال", "danger"))
+            except Exception as e:
+                self.log(f"خطا در بررسی کروم: {e}", "ERROR")
+                self.after(0, lambda: self.hil_status_pill.set_status("خطا در بررسی 🔴", "danger"))
+            finally:
+                self.after(0, lambda: self.hil_doctor_btn.configure(state="normal"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_insert_prompt_to_chrome_clicked(self):
+        """
+        ۲. با زدن دکمه توسط کاربر متن وارد شود.
+        """
+        prompt = self.hil_prompt_preview.get("1.0", "end").strip()
+        if not prompt:
+            messagebox.showwarning("پرامپت خالی", "لطفاً ابتدا یک پلان را انتخاب کنید یا متنی در کادر پیش‌نمایش بنویسید.")
+            return
+
+        self.log("✍️ گام ۲: در حال درج متن پرامپت در کادر متنی Google Flow درون کروم...", "INFO")
+        self.hil_insert_text_btn.configure(state="disabled")
+        self.set_progress(0.3, indeterminate=True)
+
+        def worker():
+            try:
+                res = self.flow_automator.insert_prompt_to_flow(prompt)
+                ok = res.get("ok", False)
+                if ok:
+                    self.log("✅ متن با موفقیت در کادر گوگل فلو درج شد! اکنون در پنجره کروم تنظیمات را دستی انتخاب و دکمه Generate را بزنید.", "SUCCESS")
+                else:
+                    msg = res.get("message", "خطا در تایپ متن")
+                    self.log(f"⚠️ {msg}", "WARNING")
+                    # Fallback to clipboard
+                    self.clipboard_clear()
+                    self.clipboard_append(prompt)
+                    self.log("📋 متن پرامپت در کلیپ‌بورد کپی شد تا بتوانید به صورت دستی در کادر Paste کنید.", "INFO")
+            except Exception as e:
+                self.log(f"خطا در درج متن پرامپت: {e}", "ERROR")
+                self.clipboard_clear()
+                self.clipboard_append(prompt)
+            finally:
+                self.after(0, lambda: self.hil_insert_text_btn.configure(state="normal"))
+                self.after(0, lambda: self.set_progress(0.0))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_copy_hil_prompt_clicked(self):
+        prompt = self.hil_prompt_preview.get("1.0", "end").strip()
+        if prompt:
+            self.clipboard_clear()
+            self.clipboard_append(prompt)
+            self.log("📋 متن پرامپت انتخاب‌شده در کلیپ‌بورد کپی شد.", "SUCCESS")
+        else:
+            messagebox.showwarning("پرامپت خالی", "کادر پرامپت خالی است.")
+
+    def open_landing_downloads_folder(self):
+        """
+        ۳. یک دکمه باز شدن پوشه لندینگ پیج دانلودی‌ها وجود داشته باشه
+        """
+        landing_dir = Path(self.config.get("downloads_path", str(Path.home() / "Downloads")))
+        if not landing_dir.exists():
+            landing_dir.mkdir(parents=True, exist_ok=True)
+        self.log(f"📂 گام ۳: باز کردن پوشه لندینگ دانلودی‌ها: {landing_dir}", "INFO")
+        open_file_or_folder(landing_dir)
+
+    def on_auto_import_downloads_clicked(self):
+        """
+        کمک‌یار هوشمند انتقال راش‌ها از پوشه دانلودها به DropZone
+        """
+        if not self.current_project_dir:
+            messagebox.showwarning("پروژه انتخاب نشده", "ابتدا پروژه را انتخاب یا ایجاد نمایید.")
+            return
+
+        landing_dir = Path(self.config.get("downloads_path", str(Path.home() / "Downloads")))
+        dropzone = self.current_project_dir / "03_Raw_DropZone"
+
+        if not landing_dir.exists():
+            messagebox.showinfo("اطلاع", "پوشه دانلودها یافت نشد.")
+            return
+
+        media_exts = {".mp4", ".mov", ".png", ".jpg", ".jpeg", ".webp"}
+        import time as pytime
+        now = pytime.time()
+        recent_files = []
+
+        try:
+            for item in landing_dir.iterdir():
+                if item.is_file() and item.suffix.lower() in media_exts:
+                    mtime = item.stat().st_mtime
+                    if now - mtime < 14400:
+                        recent_files.append(item)
+        except Exception as e:
+            self.log(f"خطا در اسکن پوشه دانلودها: {e}", "ERROR")
+
+        if not recent_files:
+            messagebox.showinfo(
+                "اسکن پوشه دانلودها",
+                "فایل ویدیویی یا تصویری تازه دانلودشده‌ای در پوشه دانلودها یافت نشد.\n\n"
+                "لطفاً پس از اتمام تولید در گوگل فلو، فایل‌ها را دانلود نموده و مجدداً این دکمه را بزنید یا دستی در DropZone کپی کنید."
+            )
+            return
+
+        recent_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+        self.log(f"📥 تعداد {len(recent_files)} فایل رسانه‌ای تازه دانلودشده شناسایی شد.", "INFO")
+
+        for f in recent_files:
+            if f.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"] and ("background" in f.name.lower() or "thumb" in f.name.lower() or f.name.startswith("AI_")):
+                dest = dropzone / "Audio_BGM" / "AI_Background.png"
+                shutil.copy2(f, dest)
+                self.log(f"🖼 تصویر کاور به DropZone/Audio_BGM منتقل شد: {f.name}", "SUCCESS")
+
+        self.refresh_dropzone_checklist()
+        open_file_or_folder(dropzone)
+        messagebox.showinfo(
+            "اسکن پوشه دانلودها",
+            f"تعداد {len(recent_files)} فایل در پوشه دانلودها شناسایی شد.\n"
+            f"پوشه DropZone باز شد تا فایل‌های ویدیویی هر پلان را به راحتی جای‌گذاری نمایید."
+        )
+
+    def on_confirm_downloads_and_proceed_clicked(self):
+        """
+        ۴. دکمه تایید باشد که با زدن آن یعنی تصاویر دانلود شده و در پوشه لندینگ قرار گرفته و اپ به مرحله بعد ببرد
+        """
+        if not self.current_project_dir:
+            messagebox.showwarning("پروژه انتخاب نشده", "لطفاً ابتدا یک پروژه را باز یا ایجاد نمایید.")
+            return
+
+        self.log("✅ گام ۴: تایید دانلود راش‌ها و انتقال به مرحله بعد...", "INFO")
+
+        self.refresh_dropzone_checklist()
+
+        self.tabview.set("۴. تدوین و پریمیر (Assembly)")
+        self.go_to_step4_btn.configure(state="normal")
+        self.build_workspace_btn.configure(state="normal")
+
+        self.log("🚀 دریافت فایل‌های راش تایید شد. ورود به گام ۴ (تدوین، تولید زیرنویس با Whisper و ساخت پروژه پریمیر).", "SUCCESS")
+
+        messagebox.showinfo(
+            "تایید دریافت فایل‌ها",
+            "فایل‌های دانلودی تایید شدند! 🎉\n\n"
+            "به مرحله ۴ (تدوین و پریمیر) منتقل شدید.\n"
+            "اکنون وضعیت راش‌های هر پلان را در جدول مشاهده کرده و دکمه «ساخت پروژه پریمیر + زیرنویس» را کلیک کنید."
+        )
 
     # -------------------------------------------------------------
     # Google Flow (Terminal CDP) Handlers

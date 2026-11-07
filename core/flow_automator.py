@@ -12,6 +12,7 @@ import os
 import shutil
 import socket
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -168,6 +169,60 @@ class FlowAutomator:
         except Exception as e:
             self.log(f"❌ خطا در اجرای مستقیم Chrome: {e}")
             return False
+
+    def open_flow_new_project(self) -> Dict[str, Any]:
+        """
+        گام اول همیار انسان و ماشین:
+        اجرای کروم (در صورت بسته بودن) و ساخت/باز کردن یک پروژه جدید در Google Flow.
+        """
+        port = int(self.config.get("cdp_port", 9222))
+        if not self._is_port_open(port):
+            self.log("🌐 پورت CDP باز نیست. در حال اجرای مرورگر کروم...")
+            if not self.launch_chrome():
+                return {"ok": False, "message": "امکان باز کردن مرورگر کروم وجود نداشت."}
+            time.sleep(1.5)
+
+        self.log("🚀 در حال ایجاد و باز کردن پروژه جدید در Google Flow...")
+        res = self._run_worker(["--action", "open-new-project"], timeout=35)
+        if res.get("ok"):
+            self.log("✅ پروژه با موفقیت در گوگل فلو ایجاد/آماده شد.", "SUCCESS")
+        else:
+            self.log("⚠️ مرورگر باز شد؛ در صورت نیاز در صفحه کروم دکمه New Project را بزنید.", "WARNING")
+        return res
+
+    def insert_prompt_to_flow(self, prompt: str) -> Dict[str, Any]:
+        """
+        گام دوم همیار انسان و ماشین:
+        درج خودکار متن پرامپت در کادر متنی Google Flow درون مرورگر کروم.
+        """
+        port = int(self.config.get("cdp_port", 9222))
+        if not self._is_port_open(port):
+            self.log("⚠️ کروم باز نیست. ابتدا دکمه «باز کردن کروم و ایجاد پروژه جدید» را کلیک کنید.", "WARNING")
+            return {"ok": False, "message": "مرورگر کروم باز نیست."}
+
+        clean_prompt = prompt.strip()
+        if not clean_prompt:
+            return {"ok": False, "message": "متن پرامپت خالی است."}
+
+        self.log("✍️ در حال درج متن پرامپت در کادر ورودی Google Flow...")
+        tmp_path = Path(tempfile.gettempdir()) / "flow_prompt_temp.txt"
+        try:
+            tmp_path.write_text(clean_prompt, encoding="utf-8")
+            res = self._run_worker(["--action", "insert-prompt", "--prompt-file", str(tmp_path)], timeout=25)
+            if res.get("ok"):
+                self.log("✅ پرامپت با موفقیت در گوگل فلو درج شد. اکنون تنظیمات را اعمال و دکمه Generate را بزنید.", "SUCCESS")
+            else:
+                self.log("⚠️ امکان تایپ مستقیم در کادر متنی وجود نداشت. می‌توانید از دکمه کپی پرامپت استفاده کنید.", "WARNING")
+            return res
+        except Exception as e:
+            self.log(f"❌ خطا در درج پرامپت: {e}", "ERROR")
+            return {"ok": False, "error": str(e), "message": str(e)}
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    pass
 
     def run_diagnostics(self) -> Dict[str, Any]:
         """
