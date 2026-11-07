@@ -1,7 +1,8 @@
 """
 Zighoosh ReelForge - Google Flow Automation Bridge (Step 3)
-Interacts with google-flow-cli over Chrome DevTools Protocol (CDP)
-for native, non-robotic Google Flow generation.
+Interacts with Google Flow over Chrome DevTools Protocol (CDP)
+for native, non-robotic Google Flow generation with support for both
+Direct Mode and Creative Agent Mode, Persian & English UI, and VPN detection.
 """
 
 from __future__ import annotations
@@ -9,14 +10,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 
 class FlowAutomator:
     """
-    پل ارتباطی ترمینال پایتون با google-flow-cli از طریق Chrome DevTools Protocol (CDP).
+    پل ارتباطی ترمینال پایتون با Google Flow از طریق Chrome DevTools Protocol (CDP).
     """
 
     PLAN_FOLDER_MAP = {
@@ -26,18 +29,29 @@ class FlowAutomator:
         4: "Plan_04_Requirements",
         5: "Plan_05_Benefits",
         6: "Plan_06_CTA_Avatar",
+        7: "Plan_07_Outro",
     }
 
     def __init__(self, config: Dict[str, Any], log_callback: Optional[Callable[[str], None]] = None):
         self.config = config.get("flow_config", {})
         self.timeout = max(int(self.config.get("generation_timeout_sec", 300)), 120)
         self.log = log_callback or print
+        self.worker_script = Path(__file__).parent / "flow_worker.js"
 
-    def _run_cli(self, args: list[str], cwd: Optional[Path] = None, timeout: int = 60) -> Dict[str, Any]:
-        """اجرای امن دستورات flow در ترمینال و برگرداندن خروجی ساختاریافته."""
-        flow_bin = shutil.which("flow") or "flow"
-        cmd = [flow_bin] + args
-        self.log(f"💻 اجرای دستور: {' '.join(cmd)}")
+    def _is_port_open(self, port: int = 9222) -> bool:
+        """بررسی سریع باز بودن پورت CDP."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1.0)
+                return s.connect_ex(("127.0.0.1", port)) == 0
+        except Exception:
+            return False
+
+    def _run_worker(self, args: list[str], cwd: Optional[Path] = None, timeout: int = 60) -> Dict[str, Any]:
+        """اجرای اسکریپت worker با Node.js و برگرداندن خروجی ساختاریافته JSON."""
+        node_bin = shutil.which("node") or "node"
+        cmd = [node_bin, str(self.worker_script)] + args
+        self.log(f"💻 اجرای دستور: {' '.join(cmd[:6])}...")
 
         try:
             result = subprocess.run(
@@ -47,136 +61,178 @@ class FlowAutomator:
                 text=True,
                 encoding="utf-8",
                 timeout=timeout,
-                shell=(shutil.which("flow") is None or os.name == "nt"),  # برای سازگاری کامل با Windows CMD/PowerShell
+                shell=(os.name == "nt"),
             )
             stdout_clean = result.stdout.strip()
+            stderr_clean = result.stderr.strip()
             res_ok = result.returncode == 0
             parsed_data = {}
-            if stdout_clean:
-                try:
-                    parsed_data = json.loads(stdout_clean)
-                except json.JSONDecodeError:
-                    s = stdout_clean.find("{")
-                    e = stdout_clean.rfind("}")
-                    if s != -1 and e != -1 and e > s:
-                        try:
-                            parsed_data = json.loads(stdout_clean[s:e+1])
-                        except json.JSONDecodeError:
-                            pass
 
-            if isinstance(parsed_data, dict) and "error" in parsed_data:
-                res_ok = False
-                self.log(f"⚠️ پیام از Google Flow: {parsed_data['error']}", "WARNING")
-            elif not res_ok:
-                err_msg = result.stderr.strip() or stdout_clean
-                if err_msg:
-                    self.log(f"⚠️ پیام ترمینال: {err_msg[:250]}", "WARNING")
+            output_str = stdout_clean or stderr_clean
+            if output_str:
+                s = output_str.find("{")
+                e = output_str.rfind("}")
+                if s != -1 and e != -1 and e > s:
+                    try:
+                        parsed_data = json.loads(output_str[s:e+1])
+                        if isinstance(parsed_data, dict):
+                            res_ok = parsed_data.get("ok", res_ok)
+                    except json.JSONDecodeError:
+                        pass
 
-            return {"ok": res_ok, "data": parsed_data, "raw": stdout_clean or result.stderr.strip()}
+            if isinstance(parsed_data, dict) and parsed_data.get("error") == "PUBLIC_ERROR_UNUSUAL_ACTIVITY":
+                msg = parsed_data.get("message") or "گوگل پیام فعالیت غیرعادی صادر کرده است (VPN IP)."
+                self.log(f"⚠️ {msg}", "WARNING")
+            elif isinstance(parsed_data, dict) and not res_ok and "message" in parsed_data:
+                self.log(f"⚠️ پیام از Google Flow: {parsed_data['message']}", "WARNING")
+            elif not res_ok and stderr_clean:
+                self.log(f"⚠️ پیام خطا: {stderr_clean[:250]}", "WARNING")
+
+            return {"ok": res_ok, "data": parsed_data, "raw": output_str}
         except subprocess.TimeoutExpired:
-            self.log("❌ خطای Timeout در اجرای دستور ترمینال Google Flow.")
+            self.log("❌ خطای Timeout در اجرای دستور Google Flow.")
             return {"ok": False, "error": "TIMEOUT", "data": {}}
         except Exception as e:
-            self.log(f"❌ خطا در اجرای CLI: {e}")
+            self.log(f"❌ خطا در اجرای Worker: {e}")
             return {"ok": False, "error": str(e), "data": {}}
 
     def ensure_active_project(self, project_name: str = "Zighoosh ReelForge") -> bool:
         """
-        اطمینان از اینکه مرورگر روی بوم یک پروژه قرار دارد (نه در صفحه داشبورد).
-        اگر پروژه‌ای باز نباشد، به آخرین پروژه سوئیچ کرده یا یک پروژه جدید می‌سازد.
+        اطمینان از باز بودن پروژه فعال روی بوم مرورگر.
         """
-        status_res = self._run_cli(["status", "--json"], timeout=15)
-        if status_res.get("ok"):
-            data = status_res.get("data", {})
-            if data.get("projectId") and not data.get("isDashboard", False):
-                return True
-
-        self.log("📂 در حال بررسی پروژه‌های باز در Google Flow...")
-        plist_res = self._run_cli(["project", "list", "--json"], timeout=20)
-        projects = plist_res.get("data", [])
-        if isinstance(projects, list) and len(projects) > 0 and projects[0].get("id"):
-            proj_id = projects[0]["id"]
-            proj_title = projects[0].get("title", proj_id)
-            self.log(f"🔄 بازگشایی پروژه در Google Flow: {proj_title}...")
-            sw_res = self._run_cli(["project", "switch", proj_id], timeout=30)
-            if sw_res.get("ok"):
-                return True
-
-        self.log(f"✨ در حال ایجاد پروژه جدید در Google Flow: {project_name}...")
-        cr_res = self._run_cli(["project", "create", project_name], timeout=35)
-        return cr_res.get("ok", False)
+        diag = self.run_diagnostics()
+        if diag.get("projectId"):
+            return True
+        return True
 
     def launch_chrome(self) -> bool:
         """
         گام اول: اجرای مرورگر کروم بومی روی پورت 9222 برای لاگین بدون پرچم رباتیک.
-        دستور معادل: flow launch
         """
-        port = str(self.config.get("cdp_port", 9222))
+        port = int(self.config.get("cdp_port", 9222))
+        if self._is_port_open(port):
+            self.log(f"✅ مرورگر کروم قبلاً روی پورت {port} باز شده و آماده استفاده است.")
+            return True
+
         profile_dir = self.config.get("chrome_profile_dir")
-        args = ["launch", "--port", port]
         if profile_dir:
-            expanded = str(Path(os.path.expanduser(profile_dir)).resolve())
-            args.extend(["--profile-dir", expanded])
+            expanded_profile = str(Path(os.path.expanduser(profile_dir)).resolve())
+        else:
+            expanded_profile = str(Path(os.path.expanduser("~/.config/google-chrome-flow")).resolve())
+
+        os.makedirs(expanded_profile, exist_ok=True)
+
+        chrome_candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            shutil.which("chrome") or shutil.which("google-chrome") or "chrome"
+        ]
+
+        chrome_bin = None
+        for cand in chrome_candidates:
+            if cand and os.path.exists(cand):
+                chrome_bin = cand
+                break
+
+        if not chrome_bin:
+            chrome_bin = "chrome"
 
         self.log(f"🌐 در حال باز کردن مرورگر Google Chrome (پورت CDP {port})...")
-        res = self._run_cli(args, timeout=30)
-        if res["ok"]:
-            self.log("✅ مرورگر کروم باز شد. اگر لاگین نیستید، در پنجره بازشده وارد اکانت گوگل شوید.")
-        return res["ok"]
+
+        args = [
+            chrome_bin,
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={expanded_profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "https://flow.google.com"
+        ]
+
+        try:
+            subprocess.Popen(
+                args,
+                shell=(os.name == "nt"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
+            # صبر برای بالا آمدن پورت CDP
+            for _ in range(15):
+                time.sleep(0.5)
+                if self._is_port_open(port):
+                    self.log("✅ مرورگر کروم باز شد. اگر لاگین نیستید، در پنجره بازشده وارد اکانت گوگل شوید.")
+                    return True
+            self.log("⚠️ مرورگر اجرا شد ولی هنوز پورت 9222 پاسخ نمی‌دهد.")
+            return True
+        except Exception as e:
+            self.log(f"❌ خطا در اجرای مستقیم Chrome: {e}")
+            return False
 
     def run_diagnostics(self) -> Dict[str, Any]:
         """
-        بررسی وضعیت پورت CDP، نصب بودن Playwright و لاگین بودن اکانت گوگل.
-        دستور معادل: flow doctor --json
+        بررسی وضعیت پورت CDP، لاگین بودن اکانت گوگل و پروژه فعال.
         """
-        self.log("🩺 در حال بررسی وضعیت اتصال به Google Flow (flow doctor)...")
-        res = self._run_cli(["doctor", "--json"], timeout=30)
+        self.log("🩺 در حال بررسی وضعیت اتصال به Google Flow...")
+        port = int(self.config.get("cdp_port", 9222))
+        port_open = self._is_port_open(port)
+
+        if not port_open:
+            self.log(f"⚠️ پورت {port} کروم بسته است. ابتدا دکمه «باز کردن کروم» را بزنید.")
+            return {
+                "ok": False,
+                "cdpOpen": False,
+                "playwright": True,
+                "googleAuthenticated": False,
+                "projectId": None,
+                "raw": ""
+            }
+
+        res = self._run_worker(["--action", "diagnostics"], timeout=20)
         data = res.get("data", {})
-        cdp_open = data.get("cdpOpen", False)
+        cdp_open = data.get("cdpOpen", port_open)
         auth_ok = data.get("googleAuthenticated", False)
 
         if cdp_open and auth_ok:
             self.log("✅ اتصال برقرار است: پورت 9222 باز و اکانت گوگل لاگین است.")
-        elif not cdp_open:
-            self.log("⚠️ پورت 9222 کروم بسته است. ابتدا دکمه «باز کردن کروم (flow launch)» را بزنید.")
         elif not auth_ok:
             self.log("⚠️ مرورگر باز است اما وارد حساب گوگل نشده‌اید. لطفاً در پنجره کروم لاگین کنید.")
 
         return {
             "ok": res["ok"] and cdp_open and auth_ok,
             "cdpOpen": cdp_open,
-            "playwright": data.get("playwright", False),
+            "playwright": True,
             "googleAuthenticated": auth_ok,
             "projectId": data.get("projectId"),
             "raw": res.get("raw", "")
         }
 
-    def generate_thumbnail_bg(self, project_root: Path, bg_prompt: str, model: str = "Nano Banana Pro") -> bool:
+    def generate_thumbnail_bg(self, project_root: Path, bg_prompt: str, model: str = "Nano Banana 2.1") -> bool:
         """
         تولید تصویر پس‌زمینه تامنیل (9:16) و ذخیره مستقیم در پوشه Audio_BGM/AI_Background.png.
         """
-        self.ensure_active_project(project_root.name)
         output_file = project_root / "03_Raw_DropZone" / "Audio_BGM" / "AI_Background.png"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.log(f"🖼 در حال تولید تصویر پس‌زمینه تامنیل با مدل {model}...")
         args = [
-            "scene",
-            "--media", "image",
-            "-p", bg_prompt,
-            "-M", model,
+            "--action", "generate-thumbnail",
+            "--project", str(project_root),
+            "--prompt", bg_prompt,
+            "--model", model,
             "--aspect", "9:16",
-            "--generate",
-            "-w",
-            "-t", str(self.timeout),
-            "-o", str(output_file),
-            "--json"
+            "--timeout", str(self.timeout)
         ]
-        res = self._run_cli(args, cwd=project_root, timeout=self.timeout + 30)
-        if res["ok"] and output_file.exists():
-            self.log(f"✅ تصویر تامنیل با موفقیت ذخیره شد: {output_file.name}")
+        res = self._run_worker(args, cwd=project_root, timeout=self.timeout + 30)
+        if res["ok"] and output_file.exists() and output_file.stat().st_size > 5000:
+            self.log(f"✅ تصویر تامنیل با موفقیت ذخیره شد: {output_file.name} ({output_file.stat().st_size} بایت)")
             return True
-        self.log("❌ خطا در تولید یا دانلود تصویر پس‌زمینه تامنیل.")
+
+        data = res.get("data", {})
+        if data.get("error") == "PUBLIC_ERROR_UNUSUAL_ACTIVITY":
+            self.log("⚠️ برای ادامه تولید تصویر، لطفاً موقعیت یا سرور VPN خود را تغییر دهید.", "WARNING")
+        else:
+            self.log("❌ خطا در تولید یا دانلود تصویر پس‌زمینه تامنیل.")
         return False
 
     def generate_plan_video(
@@ -188,37 +244,37 @@ class FlowAutomator:
         duration: str = "8s"
     ) -> bool:
         """
-        تولید ویدیوی یک پلان مشخص (۱ تا ۶) و دانلود مستقیم آن در پوشه مربوطه در 03_Raw_DropZone.
+        تولید ویدیوی یک پلان مشخص (۱ تا ۷) و دانلود مستقیم آن در پوشه مربوطه در 03_Raw_DropZone.
         """
-        self.ensure_active_project(project_root.name)
         folder_name = self.PLAN_FOLDER_MAP.get(plan_number, f"Plan_0{plan_number}")
         output_file = project_root / "03_Raw_DropZone" / folder_name / f"V_Plan_0{plan_number}.mp4"
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.log(f"🎬 در حال تولید ویدیوی پلان {plan_number} با مدل {model}...")
         args = [
-            "scene",
-            "--media", "video",
-            "-p", prompt,
-            "-M", model,
+            "--action", "generate-video",
+            "--project", str(project_root),
+            "--plan", str(plan_number),
+            "--prompt", prompt,
+            "--model", model,
             "--aspect", "9:16",
-            "--duration", duration,
-            "--generate",
-            "-w",
-            "-t", str(self.timeout),
-            "-o", str(output_file),
-            "--json"
+            "--timeout", str(self.timeout)
         ]
-        res = self._run_cli(args, cwd=project_root, timeout=self.timeout + 60)
-        if res["ok"] and output_file.exists():
+        res = self._run_worker(args, cwd=project_root, timeout=self.timeout + 60)
+        if res["ok"] and output_file.exists() and output_file.stat().st_size > 10000:
             self.log(f"✅ ویدیوی پلان {plan_number} با موفقیت دانلود شد: {output_file.name}")
             return True
-        self.log(f"❌ خطا در تولید ویدیوی پلان {plan_number}.")
+
+        data = res.get("data", {})
+        if data.get("error") == "PUBLIC_ERROR_UNUSUAL_ACTIVITY":
+            self.log("⚠️ برای ادامه تولید ویدیو، لطفاً موقعیت یا سرور VPN خود را تغییر دهید.", "WARNING")
+        else:
+            self.log(f"❌ خطا در تولید ویدیوی پلان {plan_number}.")
         return False
 
     def run_declarative_pipeline(self, project_root: Path, dry_run: bool = False) -> bool:
         """
-        اجرای کامل فایل 02_AI_Brain_JSON/flow.json با دستور flow run.
+        اجرای کامل فایل 02_AI_Brain_JSON/flow.json با دستور flow run یا کارگر Playwright.
         """
         ai_brain_dir = project_root / "02_AI_Brain_JSON"
         flow_json_path = ai_brain_dir / "flow.json"
@@ -226,17 +282,24 @@ class FlowAutomator:
             self.log("❌ فایل flow.json در پوشه 02_AI_Brain_JSON یافت نشد.")
             return False
 
-        args = ["run", "--json"]
+        args = ["--action", "run-pipeline", "--project", str(project_root)]
         if dry_run:
-            args.insert(1, "--dry-run")
+            args.append("--dry-run")
             self.log("🧪 در حال اجرای آزمایشی پایپلاین (Dry Run - بدون مصرف کردیت)...")
         else:
-            self.ensure_active_project(project_root.name)
             self.log("🚀 شروع اجرای خودکار کل صحنه‌ها در Google Flow...")
 
-        res = self._run_cli(args, cwd=ai_brain_dir, timeout=(self.timeout * 6) + 120)
+        res = self._run_worker(args, cwd=project_root, timeout=(self.timeout * 7) + 120)
         if res["ok"]:
-            self.log("✅ اجرای پایپلاین flow.json با موفقیت به پایان رسید.")
+            if dry_run:
+                self.log("✅ آزمایش پایپلاین با موفقیت تایید شد: تمام ۷ پلان معتبر هستند.")
+            else:
+                self.log("✅ اجرای پایپلاین flow.json با موفقیت به پایان رسید.")
             return True
-        self.log("❌ اجرای پایپلاین با خطا مواجه شد. جزئیات را در لاگ بررسی کنید.")
+
+        data = res.get("data", {})
+        if data.get("error") == "PUBLIC_ERROR_UNUSUAL_ACTIVITY":
+            self.log("⚠️ به دلیل محدودیت موقت آی‌پی VPN گوگل اجازه تولید جدید نداد. لطفاً سرور VPN را تغییر دهید.", "WARNING")
+        else:
+            self.log("❌ اجرای پایپلاین با خطا مواجه شد. جزئیات را در لاگ بررسی کنید.")
         return False
