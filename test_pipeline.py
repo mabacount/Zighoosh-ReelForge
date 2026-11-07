@@ -326,31 +326,10 @@ SAMPLE_GEMINI_JSON_6_PLANS = {
 
 
 def test_flow_automator_and_manifest():
-    print("\n--- [STEP 6: Google Flow Automation & Manifest Unit Test] ---")
+    print("\n--- [STEP 6: AI Brain & 6-Plan Manifest Unit Test] ---")
 
-    # 1. Test importing FlowAutomator
-    print("1. Testing FlowAutomator import & initialization...")
-    from core.flow_automator import FlowAutomator
-
-    dummy_config = {
-        "flow_config": {
-            "cdp_port": 9222,
-            "chrome_profile_dir": "~/.config/google-chrome-flow",
-            "default_video_model": "Veo 3.1 - Fast",
-            "default_avatar_model": "Omni 1.1 Flash",
-            "default_image_model": "Nano Banana Pro",
-            "default_aspect": "9:16",
-            "default_duration": "8s",
-            "default_resolution": "720p",
-            "generation_timeout_sec": 300,
-        }
-    }
-    automator = FlowAutomator(dummy_config)
-    assert automator is not None, "FlowAutomator should instantiate without errors!"
-    print("FlowAutomator loaded successfully! ✅")
-
-    # 2. Test processing 6-plan JSON & manifest generation
-    print("2. Testing json_processor & flow.json manifest generation for 6 plans...")
+    # 1. Test processing 6-plan JSON & manifest generation
+    print("1. Testing json_processor & flow.json manifest generation for 6 plans...")
     test_flow_dir = Path("./test_sandbox/Flow_Test_Project").resolve()
     shutil.rmtree(test_flow_dir, ignore_errors=True)
     test_flow_dir.mkdir(parents=True, exist_ok=True)
